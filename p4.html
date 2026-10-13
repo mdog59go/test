@@ -23,7 +23,7 @@
             z-index: 1;
         }
         .hud-element {
-            z-index: 10;
+            z-index: 30;
             pointer-events: none;
         }
         .interactive {
@@ -31,18 +31,21 @@
         }
         /* Crosshair styles */
         .crosshair {
-            position: absolute;
+            position: fixed;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
             width: 60px;
             height: 60px;
-            border: 3px solid rgba(239, 68, 68, 0.8);
+            border: 3px solid rgba(239, 68, 68, 0.95);
+            box-shadow: 0 0 12px rgba(239, 68, 68, 0.6);
             border-radius: 50%;
             transition: all 0.2s ease;
             display: flex;
             align-items: center;
             justify-content: center;
+            z-index: 35;
+            pointer-events: none;
         }
         .crosshair.filled {
             width: 35vw;
@@ -50,7 +53,8 @@
             max-width: 250px;
             max-height: 250px;
             border-color: #f97316;
-            background: rgba(249, 115, 22, 0.2);
+            background: rgba(249, 115, 22, 0.25);
+            box-shadow: 0 0 20px rgba(249, 115, 22, 0.6);
         }
         @keyframes goldFlash {
             0% { emissive: #000; }
@@ -69,11 +73,18 @@
         <div class="bg-slate-900 border border-slate-700 rounded-2xl p-6 md:p-8 max-w-md w-full shadow-2xl text-center">
             <div class="text-4xl mb-3">🏀🏀🏀🏀</div>
             <h1 class="text-2xl font-bold mb-2 bg-gradient-to-r from-orange-400 to-amber-500 bg-clip-text text-transparent">iPad 3D 四向籃框投籃挑戰</h1>
-            <p class="text-slate-400 text-sm mb-6">請輸入姓名以開始 (3分鐘 / 30顆球)</p>
+            <p class="text-slate-400 text-sm mb-6">四個方向都有籃框！請輸入您的姓名以開始挑戰 (3分鐘 / 30顆球)</p>
             
             <div class="mb-5 text-left">
                 <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">學生姓名</label>
                 <input type="text" id="student-name-input" value="一甲國小練習生" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-orange-500 text-center font-bold text-lg">
+            </div>
+
+            <div class="bg-slate-800/60 rounded-xl p-3 mb-6 text-xs text-slate-300 space-y-1 text-left">
+                <p>💡 <b>操作說明：</b></p>
+                <p>• 移動平板或拖曳畫面瞄準四周地上的籃球</p>
+                <p>• 瞄準籃球後自動向前慢跑撿球</p>
+                <p>• 撿到球後轉身面向任一方向的籃框投籃！</p>
             </div>
 
             <button id="start-btn" class="w-full bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white font-bold py-3.5 px-6 rounded-xl shadow-lg transition transform active:scale-95 text-lg">
@@ -86,7 +97,7 @@
     </div>
 
     <!-- Game HUD Overlay -->
-    <div id="game-hud" class="fixed inset-0 pointer-events-none hidden flex flex-col justify-between p-4 md:p-6">
+    <div id="game-hud" class="fixed inset-0 pointer-events-none hidden flex flex-col justify-between p-4 md:p-6 z-30">
         <!-- Top HUD Bar -->
         <div class="flex justify-between items-center hud-element">
             <div class="bg-slate-900/80 backdrop-blur border border-slate-700/60 px-4 py-2 rounded-xl flex items-center space-x-3 shadow-lg">
@@ -104,11 +115,12 @@
             </div>
         </div>
 
-        <!-- Center Crosshair -->
+        <!-- Center Crosshair (Fixed at center of screen) -->
+        <div id="crosshair" class="crosshair">
+            <div id="crosshair-dot" class="w-2.5 h-2.5 bg-red-500 rounded-full shadow-md"></div>
+        </div>
+
         <div class="relative flex-1 flex items-center justify-center">
-            <div id="crosshair" class="crosshair">
-                <div id="crosshair-dot" class="w-2 h-2 bg-red-500 rounded-full shadow-sm"></div>
-            </div>
             <div id="action-tip" class="absolute bottom-16 bg-black/70 backdrop-blur text-white px-4 py-2 rounded-full text-sm font-medium border border-white/10 opacity-0 transition-opacity">
                 瞄準球中，自動撿球中...
             </div>
@@ -251,21 +263,19 @@
             ctx.arc(512, 512, 80, 0, Math.PI * 2);
             ctx.stroke();
 
-            // Center line
+            // Center lines across entire court in both directions
             ctx.beginPath();
             ctx.moveTo(60, 512);
             ctx.lineTo(964, 512);
+            ctx.moveTo(512, 60);
+            ctx.lineTo(512, 964);
             ctx.stroke();
 
-            // Helper to draw hoop key & 3pt arc on each of the 4 sides
-            // North (top: z = -7.5)
-            drawHoopMarkings(ctx, 512, 60, 0);
-            // South (bottom: z = 7.5)
-            drawHoopMarkings(ctx, 512, 964, Math.PI);
-            // East (right: x = 7.5)
-            drawHoopMarkings(ctx, 964, 512, Math.PI / 2);
-            // West (left: x = -7.5)
-            drawHoopMarkings(ctx, 60, 512, -Math.PI / 2);
+            // Draw hoop markings (keys, free-throw arcs, 3pt arcs) on all 4 sides
+            drawHoopMarkings(ctx, 512, 60, 0);          // North
+            drawHoopMarkings(ctx, 512, 964, Math.PI);   // South
+            drawHoopMarkings(ctx, 964, 512, Math.PI / 2); // East
+            drawHoopMarkings(ctx, 60, 512, -Math.PI / 2); // West
 
             const texture = new THREE.CanvasTexture(canvas);
             texture.wrapS = THREE.RepeatWrapping;
@@ -485,7 +495,8 @@
 
                 cameraRotation.y -= deltaX * 0.003;
                 cameraRotation.x -= deltaY * 0.003;
-                cameraRotation.x = Math.max(-Math.PI / 3, Math.min(Math.PI / 3, cameraRotation.x));
+                // Allow looking down freely toward the floor (-81 degrees) without strict clamping
+                cameraRotation.x = Math.max(-Math.PI * 0.45, Math.min(Math.PI / 3, cameraRotation.x));
 
                 previousMousePosition = { x: e.clientX, y: e.clientY };
             });
@@ -541,7 +552,7 @@
                 if (e.gamma !== null && e.beta !== null) {
                     cameraRotation.y = THREE.MathUtils.degToRad(-e.gamma) * 1.5;
                     cameraRotation.x = THREE.MathUtils.degToRad(e.beta - 45) * 1.5;
-                    cameraRotation.x = Math.max(-Math.PI / 3, Math.min(Math.PI / 3, cameraRotation.x));
+                    cameraRotation.x = Math.max(-Math.PI * 0.45, Math.min(Math.PI / 3, cameraRotation.x));
                 }
             });
             document.getElementById('gyro-btn').innerText = "陀螺儀已啟用 ✓";
@@ -617,18 +628,20 @@
             if (gameState !== 'SEARCHING' && gameState !== 'JOGGING_TO_BALL') return;
 
             const crosshairEl = document.getElementById('crosshair');
-            const forward = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), cameraRotation.y);
+            // Use 2D horizontal view direction so looking down at balls on the ground doesn't break alignment
+            const forward2D = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), cameraRotation.y);
 
             let closestBall = null;
             let minDist = Infinity;
 
             basketballs.forEach(b => {
                 if (!b.active) return;
-                const dirToBall = new THREE.Vector3().subVectors(b.position, playerPos).normalize();
-                const angle = forward.angleTo(dirToBall);
+                const dirToBall2D = new THREE.Vector3(b.position.x - playerPos.x, 0, b.position.z - playerPos.z).normalize();
+                const angle2D = forward2D.angleTo(dirToBall2D);
                 const dist = playerPos.distanceTo(b.position);
 
-                if (angle < 0.25 && dist < 12 && dist < minDist) {
+                // Generous 2D angle tolerance (< 0.45 radians / ~25 degrees) and within 12m
+                if (angle2D < 0.45 && dist < 12 && dist < minDist) {
                     minDist = dist;
                     closestBall = b;
                 }
@@ -646,9 +659,9 @@
                 dir.y = 0;
                 const distToBall = dir.length();
 
-                if (distToBall > 0.3) {
+                if (distToBall > 0.25) {
                     dir.normalize();
-                    playerPos.addScaledVector(dir, delta * 3.5);
+                    playerPos.addScaledVector(dir, delta * 4.0);
                 } else {
                     pickupBall(targetBall);
                 }
@@ -667,7 +680,12 @@
             updateHUD();
 
             const ballGeo = new THREE.SphereGeometry(0.12, 32, 32);
-            const ballMat = new THREE.MeshStandardMaterial({ map: createBasketballTexture(), roughness: 0.6 });
+            const ballMat = new THREE.MeshStandardMaterial({ 
+                map: createBasketballTexture(), 
+                roughness: 0.6,
+                transparent: true,
+                opacity: 0.65 
+            });
             heldBallMesh = new THREE.Mesh(ballGeo, ballMat);
             scene.add(heldBallMesh);
 
@@ -688,26 +706,58 @@
             flyingBall.position.copy(startPos);
             scene.add(flyingBall);
 
-            const dir = new THREE.Vector3(0, 0, -1);
-            dir.applyAxisAngle(new THREE.Vector3(1, 0, 0), cameraRotation.x);
-            dir.applyAxisAngle(new THREE.Vector3(0, 1, 0), cameraRotation.y);
-            dir.normalize();
+            // Determine target rim based on player's looking direction
+            const rimPositions = [
+                { pos: new THREE.Vector3(0, 3.05, -6.82), base: new THREE.Vector3(0, 0, -7.5) },
+                { pos: new THREE.Vector3(0, 3.05, 6.82), base: new THREE.Vector3(0, 0, 7.5) },
+                { pos: new THREE.Vector3(6.82, 3.05, 0), base: new THREE.Vector3(7.5, 0, 0) },
+                { pos: new THREE.Vector3(-6.82, 3.05, 0), base: new THREE.Vector3(-7.5, 0, 0) }
+            ];
 
-            const speed = 14 + (cameraRotation.x * 5); 
-            ballFlightData.velocity.copy(dir).multiplyScalar(speed);
+            const forward = new THREE.Vector3(0, 0, -1);
+            const euler = new THREE.Euler(cameraRotation.x, cameraRotation.y, 0, 'YXZ');
+            forward.applyEuler(euler);
+
+            let bestRim = rimPositions[0];
+            let maxDot = -Infinity;
+            rimPositions.forEach(rim => {
+                const dirToRim = new THREE.Vector3().subVectors(rim.pos, startPos).normalize();
+                const dot = forward.dot(dirToRim);
+                if (dot > maxDot) {
+                    maxDot = dot;
+                    bestRim = rim;
+                }
+            });
+
+            ballFlightData.targetRim = bestRim.pos;
+            ballFlightData.targetRimBase = bestRim.base;
+
+            // Calculate precise parabolic velocity for guaranteed entry and smooth arc
+            const targetPos = bestRim.pos.clone();
+            const g = 9.8;
+            const flightTime = 1.1; // seconds
+
+            ballFlightData.velocity.x = (targetPos.x - startPos.x) / flightTime;
+            ballFlightData.velocity.z = (targetPos.z - startPos.z) / flightTime;
+            ballFlightData.velocity.y = (targetPos.y - startPos.y + 0.5 * g * flightTime * flightTime) / flightTime;
+
             ballFlightData.startPos.copy(startPos);
             ballFlightData.phase = 0;
             ballFlightData.scored = false;
+            ballFlightData.timer = 0;
         }
 
         function updateBallFlight(delta) {
             if (gameState !== 'FLYING' || !flyingBall) return;
 
+            ballFlightData.timer += delta;
+
+            // Apply gravity and update position along parabola
             ballFlightData.velocity.y -= 9.8 * delta;
             flyingBall.position.addScaledVector(ballFlightData.velocity, delta);
 
             const distFromStart = flyingBall.position.distanceTo(playerPos);
-            if (distFromStart > 3) {
+            if (distFromStart > 2.5) {
                 ballFlightData.phase = 1; // Chase Cam
             }
 
@@ -720,44 +770,36 @@
                 camera.lookAt(flyingBall.position);
             }
 
-            // Check collision with any of the 4 hoops
-            // Hoop rim positions: North(0, 3.05, -6.82), South(0, 3.05, 6.82), East(6.82, 3.05, 0), West(-6.82, 3.05, 0)
-            const rimPositions = [
-                { pos: new THREE.Vector3(0, 3.05, -6.82), base: new THREE.Vector3(0, 0, -7.5) },
-                { pos: new THREE.Vector3(0, 3.05, 6.82), base: new THREE.Vector3(0, 0, 7.5) },
-                { pos: new THREE.Vector3(6.82, 3.05, 0), base: new THREE.Vector3(7.5, 0, 0) },
-                { pos: new THREE.Vector3(-6.82, 3.05, 0), base: new THREE.Vector3(-7.5, 0, 0) }
-            ];
-
+            // Check if reached target rim to score
             if (!ballFlightData.scored) {
-                for (let i = 0; i < rimPositions.length; i++) {
-                    const rim = rimPositions[i];
-                    const distToRim = flyingBall.position.distanceTo(rim.pos);
+                const distToRim = flyingBall.position.distanceTo(ballFlightData.targetRim);
+                if (distToRim < 0.35 || ballFlightData.timer >= 1.05) {
+                    ballFlightData.scored = true;
+                    totalScored++;
 
-                    if (distToRim < 0.35 && flyingBall.position.y <= 3.1 && flyingBall.position.y >= 2.9) {
-                        ballFlightData.scored = true;
-                        totalScored++;
+                    const distFromHoopFloor = new THREE.Vector3(playerPos.x, 0, playerPos.z).distanceTo(ballFlightData.targetRimBase);
+                    const points = distFromHoopFloor > 6.5 ? 3 : 2;
+                    score += points;
+                    updateHUD();
 
-                        // Calculate distance from that specific hoop base for 2 or 3 points (6.5m threshold)
-                        const distFromHoopFloor = new THREE.Vector3(playerPos.x, 0, playerPos.z).distanceTo(rim.base);
-                        const points = distFromHoopFloor > 6.5 ? 3 : 2;
-                        score += points;
-                        updateHUD();
-
-                        // Flash corresponding backboard
-                        if (backboardMeshes[i]) {
-                            backboardMeshes[i].material.color.setHex(0xffd700);
+                    const rimPositions = [
+                        { pos: new THREE.Vector3(0, 3.05, -6.82), base: new THREE.Vector3(0, 0, -7.5) },
+                        { pos: new THREE.Vector3(0, 3.05, 6.82), base: new THREE.Vector3(0, 0, 7.5) },
+                        { pos: new THREE.Vector3(6.82, 3.05, 0), base: new THREE.Vector3(7.5, 0, 0) },
+                        { pos: new THREE.Vector3(-6.82, 3.05, 0), base: new THREE.Vector3(-7.5, 0, 0) }
+                    ];
+                    rimPositions.forEach((rim, idx) => {
+                        if (rim.pos.distanceTo(ballFlightData.targetRim) < 0.1 && backboardMeshes[idx]) {
+                            backboardMeshes[idx].material.color.setHex(0xffd700);
                             setTimeout(() => {
-                                backboardMeshes[i].material.color.setHex(0xffffff);
+                                backboardMeshes[idx].material.color.setHex(0xffffff);
                             }, 500);
                         }
-                        break;
-                    }
+                    });
                 }
             }
 
-            // Check floor collision
-            if (flyingBall.position.y <= 0.12) {
+            if (flyingBall.position.y <= 0.12 || ballFlightData.timer > 1.8) {
                 scene.remove(flyingBall);
                 flyingBall = null;
 
@@ -769,19 +811,6 @@
                     setGameState('SEARCHING');
                 }
             }
-        }
-
-        function endGame() {
-            setGameState('GAMEOVER');
-            if (timerInterval) clearInterval(timerInterval);
-
-            document.getElementById('end-name').innerText = studentName;
-            document.getElementById('end-score').innerText = `${score} 分`;
-            document.getElementById('end-stats').innerText = `${totalScored} / 30 顆`;
-            document.getElementById('end-reason').innerText = timeLeft <= 0 ? "時間到！挑戰結束。" : "所有籃球已投完！挑戰結束。";
-            
-            document.getElementById('game-hud').classList.add('hidden');
-            document.getElementById('end-modal').classList.remove('hidden');
         }
 
         const clock = new THREE.Clock();
@@ -803,10 +832,10 @@
                 camera.quaternion.setFromEuler(euler);
 
                 if (heldBallMesh) {
+                    // Position held ball exactly in the center of the crosshair (camera view center)
                     const forward = new THREE.Vector3(0, 0, -0.6).applyEuler(euler);
-                    const right = new THREE.Vector3(0.3, -0.2, 0).applyEuler(euler);
-                    heldBallMesh.position.copy(playerPos).add(forward).add(right);
-                    heldBallMesh.rotation.y += delta;
+                    heldBallMesh.position.copy(playerPos).add(forward);
+                    heldBallMesh.rotation.y += delta * 2;
                 }
             } else if (gameState === 'FLYING') {
                 updateBallFlight(delta);
