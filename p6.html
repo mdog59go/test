@@ -1,1 +1,263 @@
-p6
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>iPad平板投籃遊戲</title>
+<style>
+:root{color-scheme:dark;--blue:#07366c;--line:#fff;--gold:#ffd83d}
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000;font-family:system-ui,-apple-system,"Noto Sans TC",sans-serif;color:#fff;touch-action:none}
+#game{position:fixed;inset:0}canvas{display:block;width:100%;height:100%}
+#hud{position:fixed;inset:env(safe-area-inset-top) 0 auto 0;display:flex;justify-content:space-between;gap:8px;padding:10px 12px;pointer-events:none;flex-wrap:wrap}
+.pill{background:#050a13d9;border:1px solid #ffffff70;border-radius:10px;padding:7px 12px;font-size:clamp(12px,2.2vw,18px);text-shadow:0 1px 3px #000}
+#reticle{position:fixed;left:50%;top:50%;width:76px;height:76px;transform:translate(-50%,-50%);border:3px solid #ff382b;border-radius:50%;pointer-events:none;opacity:.95}
+#reticle:before,#reticle:after{content:"";position:absolute;background:#ff382b}
+#reticle:before{width:3px;height:92px;left:34px;top:-11px}
+#reticle:after{height:3px;width:92px;top:34px;left:-11px}
+#reticle span{position:absolute;width:8px;height:8px;background:#fff;border-radius:50%;left:31px;top:31px;box-shadow:0 0 8px #fff}
+#message{position:fixed;left:50%;bottom:calc(14px + env(safe-area-inset-bottom));transform:translateX(-50%);max-width:90vw;text-align:center;background:#02050bdc;border:1px solid #ffffff55;border-radius:9px;padding:9px 14px;font-size:clamp(12px,2vw,16px);pointer-events:none}
+#controls{position:fixed;right:12px;top:76px;display:flex;flex-direction:column;gap:8px}
+button{border:1px solid #ffffff80;border-radius:10px;padding:10px 13px;color:#fff;background:#124d91;font-size:14px;box-shadow:0 2px 8px #0007;cursor:pointer;touch-action:manipulation}
+button:active{transform:scale(.97)}button.red{background:#9c2c24}button.gold{background:#826311}
+#stick{position:fixed;left:14px;bottom:calc(26px + env(safe-area-inset-bottom));width:92px;height:92px;border:1px solid #ffffff90;border-radius:50%;background:#c5d7f122;display:none;touch-action:none}
+#stick:before{content:"";position:absolute;inset:25px;border-radius:50%;background:#c8d8ef66;border:1px solid #ffffff70}
+#stickDot{position:absolute;left:31px;top:31px;width:28px;height:28px;border-radius:50%;background:#d7e4f0a8;border:1px solid #fff}
+.overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#000b;padding:18px;z-index:5}
+.panel{width:min(440px,96vw);max-height:92dvh;overflow:auto;background:linear-gradient(145deg,#111a22,#05080c);border:1px solid #ffffff80;border-radius:18px;padding:24px;box-shadow:0 12px 40px #000b;text-align:center}
+h1{font-size:clamp(23px,5vw,34px);margin:0 0 18px;color:#ffdb36}p{line-height:1.55}input{width:100%;padding:14px;border:0;border-radius:8px;background:#fff;color:#111;font-size:18px;margin:8px 0 14px}button.big{width:100%;padding:13px;font-size:20px;margin-top:6px}
+.small{font-size:12px;color:#c7d0db}.hidden{display:none!important}#aimHint{position:fixed;left:50%;top:calc(50% + 58px);transform:translateX(-50%);font-size:12px;color:#fff9;pointer-events:none}
+@media(orientation:portrait){#hud{justify-content:center}#controls{top:auto;bottom:calc(132px + env(safe-area-inset-bottom));right:12px}#stick{display:block}#reticle{width:68px;height:68px}#reticle:before{left:29px;height:82px}#reticle:after{top:29px;width:82px}#reticle span{left:28px;top:28px}}
+</style>
+</head>
+<body>
+<div id="game"></div>
+<div id="hud" class="hidden">
+ <div class="pill">姓名：<span id="playerLabel">一甲國小練習生</span></div>
+ <div class="pill">得分：<b id="score">0</b></div>
+ <div class="pill">剩餘：<b id="time">03:00</b></div>
+</div>
+<div id="reticle" class="hidden"><span></span></div><div id="aimHint" class="hidden">360°轉動視角瞄準；向上仰角後點「投籃」</div>
+<div id="message" class="hidden">瞄準紅圈對準籃球，主角會慢跑靠近</div>
+<div id="controls" class="hidden">
+ <button id="gyroBtn">啟用／重置陀螺儀</button>
+ <button id="shootBtn" class="gold">投籃</button>
+ <button id="restartBtn">重新開始</button>
+ <button id="endBtn" class="red">結束遊戲</button>
+</div>
+<div id="stick" class="hidden"><div id="stickDot"></div></div>
+<div id="start" class="overlay">
+ <div class="panel">
+  <h1>🏀 iPad平板投籃遊戲</h1>
+  <p>請輸入你的姓名</p>
+  <input id="nameInput" value="一甲國小練習生" maxlength="24" aria-label="學生姓名">
+  <button id="startBtn" class="big">開始遊戲</button>
+  <p class="small">請允許裝置方向感測器。若瀏覽器不支援，仍可用滑動／搖桿調整視角。</p>
+ </div>
+</div>
+<div id="result" class="overlay hidden">
+ <div class="panel"><h1>遊戲結束</h1><p id="resultName"></p><p style="font-size:28px">得分：<b id="resultScore" style="color:#ffdb36">0</b></p><p id="resultReason"></p><button id="againBtn" class="big">再玩一局</button></div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script>
+(()=> {
+'use strict';
+const $=id=>document.getElementById(id);
+const gameEl=$('game');
+let scene,camera,renderer,clock;
+let running=false,score=0,remaining=180,player='一甲國小練習生';
+let yaw=0,pitch=-0.04,gyroOn=false,gyroBase=null,alphaBase=0,betaBase=0;
+let balls=[],heldBall=null,shot=null,hoops=[],lastTick=0,raf=0,moveX=0,moveZ=0;
+const court={w:10,l:12};
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+function makeCourtLine(points,color=0xffffff,r=.025){const g=new THREE.BufferGeometry().setFromPoints(points.map(p=>new THREE.Vector3(...p)));const m=new THREE.LineBasicMaterial({color});scene.add(new THREE.Line(g,m));}
+function ballTexture(){
+ const c=document.createElement('canvas');c.width=512;c.height=512;const x=c.getContext('2d');
+ x.fillStyle='#c76b19';x.fillRect(0,0,512,512);
+ for(let i=0;i<1800;i++){const a=Math.random()*512,b=Math.random()*512;x.fillStyle=`rgba(70,28,4,${Math.random()*.16})`;x.fillRect(a,b,2,2)}
+ x.strokeStyle='#17120d';x.lineWidth=12;
+ x.beginPath();x.moveTo(0,256);x.bezierCurveTo(150,210,350,302,512,256);x.stroke();
+ x.beginPath();x.moveTo(256,0);x.bezierCurveTo(210,140,302,370,256,512);x.stroke();
+ x.beginPath();x.arc(256,256,170,-Math.PI/2,Math.PI/2);x.stroke();
+ x.beginPath();x.arc(256,256,170,Math.PI/2,Math.PI*1.5);x.stroke();
+ const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;return t;
+}
+let bTexture;
+function createBall(x,z){
+ const mesh=new THREE.Mesh(new THREE.SphereGeometry(.12,24,18),new THREE.MeshStandardMaterial({map:bTexture,roughness:.82}));
+ mesh.position.set(x,.13,z);mesh.castShadow=true;scene.add(mesh);
+ balls.push({mesh,x,z,available:true,phase:Math.random()*6.28});
+}
+function makeHoop(z,sign){
+ const group=new THREE.Group();group.position.set(0,0,z);scene.add(group);
+ const pole=new THREE.Mesh(new THREE.CylinderGeometry(.09,.12,2.9,12),new THREE.MeshStandardMaterial({color:0x164a86,roughness:.7}));pole.position.set(0,1.45,sign*.42);group.add(pole);
+ const board=new THREE.Mesh(new THREE.BoxGeometry(1.8,1.05,.09),new THREE.MeshStandardMaterial({color:0xf6f7f8,roughness:.35,metalness:.05}));board.position.set(0,3.05,0);group.add(board);
+ const edges=new THREE.EdgesGeometry(board.geometry);group.add(new THREE.LineSegments(edges,new THREE.LineBasicMaterial({color:0xe62929})));
+ const rect=new THREE.Mesh(new THREE.BoxGeometry(.6,.42,.015),new THREE.MeshBasicMaterial({color:0xe52d2d,wireframe:true}));rect.position.set(0,2.88,-sign*.055);group.add(rect);
+ const rim=new THREE.Mesh(new THREE.TorusGeometry(.235,.025,10,32),new THREE.MeshStandardMaterial({color:0xe53935,metalness:.35,roughness:.3}));rim.rotation.x=Math.PI/2;rim.position.set(0,2.66,-sign*.22);group.add(rim);
+ const net=new THREE.Group();for(let i=0;i<12;i++){const a=i*Math.PI/6;const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(Math.cos(a)*.22,2.64,-sign*.22),new THREE.Vector3(Math.cos(a)*.13,2.28,-sign*.22)]),new THREE.LineBasicMaterial({color:0xeeeeee}));net.add(line)}group.add(net);
+ hoops.push({group,z,sign,rimPos:new THREE.Vector3(0,2.66,z-sign*.22),board});
+}
+function init3D(){
+ scene=new THREE.Scene();scene.background=new THREE.Color(0x000000);scene.fog=new THREE.Fog(0x000000,28,65);
+ camera=new THREE.PerspectiveCamera(68,innerWidth/innerHeight,.05,150);camera.position.set(0,1.65,3.7);
+ renderer=new THREE.WebGLRenderer({antialias:true,alpha:false});renderer.setPixelRatio(Math.min(devicePixelRatio||1,2));renderer.setSize(innerWidth,innerHeight);renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.2;gameEl.appendChild(renderer.domElement);
+ clock=new THREE.Clock();bTexture=ballTexture();
+ scene.add(new THREE.HemisphereLight(0x9abaff,0x18220f,1.3));
+ const light=new THREE.DirectionalLight(0xffffff,2.1);light.position.set(-4,10,4);light.castShadow=true;scene.add(light);
+ const grass=new THREE.Mesh(new THREE.PlaneGeometry(100,100),new THREE.MeshStandardMaterial({color:0x073b1b,roughness:1}));grass.rotation.x=-Math.PI/2;grass.position.y=-.035;scene.add(grass);
+ const floor=new THREE.Mesh(new THREE.PlaneGeometry(court.w,court.l),new THREE.MeshStandardMaterial({color:0x07356c,roughness:.88,metalness:.03}));floor.rotation.x=-Math.PI/2;floor.position.y=0;floor.receiveShadow=true;scene.add(floor);
+ const z1=-court.l/2,z2=court.l/2,x1=-court.w/2,x2=court.w/2;
+ makeCourtLine([[x1,.012,z1],[x2,.012,z1],[x2,.012,z2],[x1,.012,z2],[x1,.012,z1]]);
+ // Center line and center circle
+ makeCourtLine([[x1,.014,0],[x2,.014,0]]);
+ const circlePts=[];for(let i=0;i<=80;i++){const a=i*Math.PI*2/80;circlePts.push([Math.cos(a)*1.1,.014,Math.sin(a)*1.1])}makeCourtLine(circlePts);
+ // Painted key areas at both ends
+ for(const s of [-1,1]){
+  const end=s*6;
+  makeCourtLine([[-2,.018,end],[-2,.018,end-s*2.3],[2,.018,end-s*2.3],[2,.018,end]]);
+  makeCourtLine([[-1.25,.019,end-s*2.3],[-1.25,.019,end-s*3.1],[1.25,.019,end-s*3.1],[1.25,.019,end-s*2.3]]);
+  const arc=[];for(let i=0;i<=40;i++){let a=Math.PI*(i/40);arc.push([Math.cos(a)*1.25,.02,end-s*3.1+Math.sin(a)*1.25])}makeCourtLine(arc);
+  // three-point arc, radius 5m, clipped to sidelines
+  const pts=[];for(let i=0;i<=90;i++){let a=(i/90)*Math.PI;let x=Math.cos(a)*5,z=end-s*1.0+Math.sin(a)*5; if(Math.abs(x)<=5)pts.push([x,.02,z])}makeCourtLine(pts);
+ }
+ makeHoop(-5.25,-1);makeHoop(5.25,1);
+ // 30 balls scattered in a playable 8m range, mostly around one half
+ for(let i=0;i<30;i++){
+  let x=(Math.random()-.5)*8,z=-5.4+Math.random()*8.0;
+  if(Math.abs(x)<.7&&z<-4.7) x+=Math.random()>.5?1.2:-1.2;
+  createBall(x,z);
+ }
+ window.addEventListener('resize',resize);
+ renderer.domElement.addEventListener('pointerdown',pointerDown);
+ renderer.domElement.addEventListener('pointermove',pointerMove);
+ renderer.domElement.addEventListener('pointerup',pointerUp);
+}
+function resize(){if(!camera||!renderer)return;camera.aspect=innerWidth/innerHeight;camera.fov=innerHeight>innerWidth?76:66;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio||1,2))}
+let drag=null;
+function pointerDown(e){if(!running)return;drag={x:e.clientX,y:e.clientY,id:e.pointerId};}
+function pointerMove(e){if(!drag||drag.id!==e.pointerId||!running)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;drag.x=e.clientX;drag.y=e.clientY;yaw-=dx*.004;pitch+=dy*.003;}
+function pointerUp(){drag=null}
+function cameraDir(){return new THREE.Vector3(Math.sin(yaw)*Math.cos(pitch),Math.sin(pitch),-Math.cos(yaw)*Math.cos(pitch)).normalize()}
+function updateCamera(dt){
+ if(!camera)return;
+ const dir=cameraDir();
+ camera.position.x=clamp(camera.position.x+moveX*dt*2.3,-4.3,4.3);
+ camera.position.z=clamp(camera.position.z+moveZ*dt*2.3,-5.6,5.7);
+ camera.position.y=1.65;
+ camera.lookAt(camera.position.clone().add(dir.multiplyScalar(10)));
+}
+function showMsg(s){$('message').textContent=s}
+function setScore(){ $('score').textContent=score }
+function closestBall(){
+ const dir=cameraDir();let best=null,bestAngle=.11,bestDist=Infinity;
+ for(const b of balls){if(!b.available)continue;const p=b.mesh.position.clone().sub(camera.position),dist=p.length();const angle=dir.angleTo(p.normalize());if(angle<bestAngle&&dist<bestDist){best=b;bestDist=dist}}
+ return best;
+}
+function pickupBall(dt){
+ if(heldBall||shot)return;
+ const b=closestBall();
+ if(b){
+  // 角色／攝影機向球移動；球留在原地，不會被吸向瞄準圈。
+  const toBall=b.mesh.position.clone().sub(camera.position);
+  const horizontal=new THREE.Vector3(toBall.x,0,toBall.z);
+  const distance=horizontal.length();
+  if(distance>.42){
+   horizontal.normalize();
+   const step=Math.min(distance-.38,2.2*dt);
+   camera.position.x+=horizontal.x*step;
+   camera.position.z+=horizontal.z*step;
+  }else{
+   heldBall=b;b.available=false;
+   b.mesh.material.transparent=true;b.mesh.material.opacity=.62;
+   b.mesh.position.copy(camera.position.clone().add(cameraDir().multiplyScalar(1.2)));
+   showMsg('已撿起籃球！調整仰角，按「投籃」');
+  }
+ } else showMsg('360°轉動視角尋找籃球；紅圈對準球後，主角會慢跑靠近');
+}
+function shoot(){
+ if(!running)return;
+ if(!heldBall){showMsg('請先瞄準並撿起一顆籃球');return}
+ const dir=cameraDir();if(dir.y<.02){showMsg('請將平板向上仰一些再投籃');return}
+ const mesh=heldBall.mesh;mesh.material.transparent=false;mesh.material.opacity=1;
+ const start=camera.position.clone().add(dir.clone().multiplyScalar(.7));start.y+=-.05;mesh.position.copy(start);
+ shot={ball:heldBall,vel:dir.multiplyScalar(8.8+Math.max(0,pitch)*4.2),elapsed:0,follow:true,scored:false};heldBall=null;
+ showMsg('投籃中……球落地後將自動回到學生視角');
+}
+function updateShot(dt){
+ if(!shot)return;
+ shot.elapsed+=dt;shot.vel.y-=9.8*dt;shot.ball.mesh.position.addScaledVector(shot.vel,dt);shot.ball.mesh.rotation.x+=dt*7;shot.ball.mesh.rotation.z+=dt*4;
+ // Keep horizontal camera follow behind the ball
+ const p=shot.ball.mesh.position;const horiz=new THREE.Vector3(shot.vel.x,0,shot.vel.z);if(horiz.lengthSq()>.01){horiz.normalize();camera.position.lerp(new THREE.Vector3(p.x-horiz.x*2.4,Math.max(1.0,p.y+.25),p.z-horiz.z*2.4),Math.min(1,dt*2.8));camera.lookAt(p)}
+ for(const h of hoops){
+  const rp=h.rimPos;
+  if(!shot.scored&&shot.elapsed>.15&&shot.ball.mesh.position.distanceTo(rp)<.28&&shot.vel.y<0){
+   shot.scored=true;score++;setScore();flashBoard(h);showMsg('漂亮！投進了！+1分');
+  }
+ }
+ if(p.y<=.13&&shot.elapsed>.25){
+  shot.ball.mesh.position.y=.13;scene.remove(shot.ball.mesh);shot=null;
+  camera.position.set(clamp(camera.position.x,-4,4),1.65,clamp(camera.position.z,-5.4,5.4));showMsg('球已落地，正在尋找下一顆球');return;
+ }
+ if(shot.elapsed>5){scene.remove(shot.ball.mesh);shot=null;camera.position.y=1.65}
+}
+function flashBoard(h){
+ const mat=h.board.material;const original=mat.color.getHex();mat.color.setHex(0xffd32a);mat.emissive=new THREE.Color(0xffbd00);mat.emissiveIntensity=2;
+ setTimeout(()=>{if(mat){mat.color.setHex(original);mat.emissiveIntensity=0}},500);
+}
+function tick(now){
+ raf=requestAnimationFrame(tick);if(!renderer)return;
+ const dt=Math.min(clock.getDelta(),.04);
+ if(running){
+  remaining=Math.max(0,remaining-dt);$('time').textContent=`${String(Math.floor(remaining/60)).padStart(2,'0')}:${String(Math.floor(remaining%60)).padStart(2,'0')}`;
+  if(remaining<=0){endGame('時間到');}
+  if(!shot){updateCamera(dt);if(heldBall){heldBall.mesh.position.copy(camera.position.clone().add(cameraDir().multiplyScalar(1.2)));heldBall.mesh.rotation.y+=dt*1.2;heldBall.mesh.material.transparent=true;heldBall.mesh.material.opacity=.6;}else pickupBall(dt);}
+  updateShot(dt);
+  for(const b of balls)if(b.available){b.mesh.rotation.y+=dt*.15;b.mesh.position.y=.13+Math.sin(now*.001+b.phase)*.008}
+  if(!balls.some(b=>b.available)&&!heldBall&&!shot)endGame('30 顆籃球已用完');
+ }
+ renderer.render(scene,camera);
+}
+async function enableGyro(){
+ try{
+  if(typeof DeviceOrientationEvent!=='undefined'&&typeof DeviceOrientationEvent.requestPermission==='function'){
+   const p=await DeviceOrientationEvent.requestPermission();if(p!=='granted')throw new Error('未取得權限');
+  }
+  window.addEventListener('deviceorientation',onOrientation,true);gyroOn=true;showMsg('陀螺儀已啟用；移動平板即可瞄準');
+ }catch(e){gyroOn=false;showMsg('無法啟用陀螺儀，請使用手指滑動畫面瞄準');}
+}
+function onOrientation(e){
+ if(e.alpha==null||e.beta==null||e.gamma==null)return;
+ if(!gyroBase){gyroBase={a:e.alpha,b:e.beta,g:e.gamma};alphaBase=e.alpha;betaBase=e.beta;return}
+ // Relative movement, scaled conservatively for tablet handling
+ let da=((e.alpha-alphaBase+540)%360)-180;
+ yaw=gyroBase.yaw===undefined?yaw:yaw;
+ if(gyroBase.yaw===undefined){gyroBase.yaw=yaw;gyroBase.pitch=pitch}
+ yaw=gyroBase.yaw-da*Math.PI/180;
+ pitch=gyroBase.pitch+(e.beta-betaBase)*Math.PI/180;
+}
+function resetGyro(){gyroBase=null;alphaBase=0;betaBase=0;showMsg('陀螺儀基準已重置，請保持平板正向');if(!gyroOn)enableGyro()}
+function resetGame(){
+ if(!scene)return;
+ // Remove old balls and rebuild fresh 30-ball layout
+ for(const b of balls)scene.remove(b.mesh);balls=[];heldBall=null;shot=null;score=0;remaining=180;setScore();$('time').textContent='03:00';
+ for(let i=0;i<30;i++){let x=(Math.random()-.5)*8,z=-5.4+Math.random()*8;if(Math.abs(x)<.7&&z<-4.7)x+=Math.random()>.5?1.2:-1.2;createBall(x,z)}
+ camera.position.set(0,1.65,3.7);yaw=0;pitch=-.04;gyroBase=null;
+}
+function startGame(){player=$('nameInput').value.trim()||'一甲國小練習生';$('playerLabel').textContent=player;$('start').classList.add('hidden');$('result').classList.add('hidden');$('hud').classList.remove('hidden');$('reticle').classList.remove('hidden');$('aimHint').classList.remove('hidden');$('message').classList.remove('hidden');$('controls').classList.remove('hidden');$('stick').classList.remove('hidden');resetGame();running=true;showMsg('先移動瞄準圈尋找籃球；撿起後調整仰角投籃');}
+function endGame(reason){if(!running)return;running=false;$('resultName').textContent='姓名：'+player;$('resultScore').textContent=score;$('resultReason').textContent=reason;$('result').classList.remove('hidden');}
+$('startBtn').addEventListener('click',()=>{startGame();enableGyro()});
+$('gyroBtn').addEventListener('click',resetGyro);
+$('shootBtn').addEventListener('click',shoot);
+$('restartBtn').addEventListener('click',()=>{if(!running){startGame();return}resetGame();showMsg('已重新開始！')});
+$('endBtn').addEventListener('click',()=>endGame('學生結束遊戲'));
+$('againBtn').addEventListener('click',()=>{startGame();});
+const stick=$('stick'),dot=$('stickDot');let stickPointer=null;
+stick.addEventListener('pointerdown',e=>{stickPointer=e.pointerId;stick.setPointerCapture(e.pointerId);moveStick(e)});
+stick.addEventListener('pointermove',e=>{if(stickPointer===e.pointerId)moveStick(e)});
+stick.addEventListener('pointerup',e=>{if(stickPointer===e.pointerId){stickPointer=null;moveX=moveZ=0;dot.style.transform='translate(0,0)'}});
+function moveStick(e){const r=stick.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2;let dx=e.clientX-cx,dy=e.clientY-cy;const len=Math.hypot(dx,dy),max=28;if(len>max){dx=dx/len*max;dy=dy/len*max}dot.style.transform=`translate(${dx}px,${dy}px)`;moveX=dx/max;moveZ=dy/max;}
+init3D();resize();tick(0);
+})();
+</script>
+</body>
+</html>
