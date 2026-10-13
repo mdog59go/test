@@ -1,1 +1,901 @@
-p3
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>環遊世界八十天 - Kahoot! 挑戰賽</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800;900&family=Noto+Sans+TC:wght@500;700;900&display=swap" rel="stylesheet">
+  
+  <style>
+    body {
+      font-family: 'Noto Sans TC', 'Montserrat', sans-serif;
+      background-color: #46178f;
+      color: #ffffff;
+      touch-action: manipulation;
+      user-select: none;
+      -webkit-user-select: none;
+      overflow-x: hidden;
+    }
+
+    .kahoot-bg {
+      background: radial-gradient(circle at 50% 30%, #5c1ca6 0%, #321067 100%);
+    }
+
+    /* Kahoot Button Colors & Shadows */
+    .btn-red {
+      background-color: #e21b3c;
+      box-shadow: 0 6px 0 #990f25;
+    }
+    .btn-red:active {
+      transform: translateY(4px);
+      box-shadow: 0 2px 0 #990f25;
+    }
+
+    .btn-blue {
+      background-color: #1368ce;
+      box-shadow: 0 6px 0 #093c7a;
+    }
+    .btn-blue:active {
+      transform: translateY(4px);
+      box-shadow: 0 2px 0 #093c7a;
+    }
+
+    .btn-yellow {
+      background-color: #ffa602;
+      box-shadow: 0 6px 0 #a86c00;
+      color: #333;
+    }
+    .btn-yellow:active {
+      transform: translateY(4px);
+      box-shadow: 0 2px 0 #a86c00;
+    }
+
+    .btn-green {
+      background-color: #26890c;
+      box-shadow: 0 6px 0 #144905;
+    }
+    .btn-green:active {
+      transform: translateY(4px);
+      box-shadow: 0 2px 0 #144905;
+    }
+
+    .btn-purple {
+      background-color: #864cbf;
+      box-shadow: 0 6px 0 #542d7c;
+    }
+    .btn-purple:active {
+      transform: translateY(4px);
+      box-shadow: 0 2px 0 #542d7c;
+    }
+
+    /* Custom Pulse & Shimmer */
+    @keyframes pulse-fast {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.08); }
+    }
+    .animate-pulse-fast {
+      animation: pulse-fast 0.6s infinite;
+    }
+
+    @keyframes bounce-gentle {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-10px); }
+    }
+    .animate-bounce-gentle {
+      animation: bounce-gentle 2s infinite ease-in-out;
+    }
+
+    /* Timer Circle Animation */
+    .timer-svg circle {
+      transition: stroke-dashoffset 0.1s linear;
+    }
+
+    /* Selected Option Glow */
+    .option-selected {
+      ring: 6px solid #ffffff;
+      opacity: 0.95;
+    }
+    .option-dim {
+      opacity: 0.35;
+      filter: grayscale(40%);
+    }
+
+    /* Podium Styles */
+    .podium-1 { background: linear-gradient(180deg, #ffd700 0%, #b39700 100%); }
+    .podium-2 { background: linear-gradient(180deg, #e0e0e0 0%, #9e9e9e 100%); }
+    .podium-3 { background: linear-gradient(180deg, #cd7f32 0%, #8c531b 100%); }
+  </style>
+</head>
+<body class="kahoot-bg min-h-screen flex flex-col justify-between items-center relative overflow-hidden">
+
+  <!-- Top Navigation / Sound Toggle Header -->
+  <header class="w-full max-w-5xl px-4 py-3 flex justify-between items-center z-20">
+    <div class="flex items-center space-x-2">
+      <span class="bg-white text-purple-900 font-black px-3 py-1 rounded-full text-lg shadow-md tracking-wider">
+        KAHOOT!
+      </span>
+      <span class="text-xs sm:text-sm font-bold opacity-80 uppercase tracking-widest hidden sm:inline">
+        80 Days World Tour
+      </span>
+    </div>
+    
+    <div class="flex items-center space-x-3">
+      <!-- Music & Sound Toggle Buttons -->
+      <button id="sound-btn" onclick="toggleSound()" class="p-2.5 bg-purple-800/60 hover:bg-purple-700 rounded-full transition text-white shadow" title="切換音效">
+        <i id="sound-icon" class="fas fa-volume-up text-lg"></i>
+      </button>
+      <div id="pin-badge" class="hidden bg-black/40 px-3 py-1 rounded-lg text-xs font-mono font-bold border border-white/20">
+        PIN: <span id="game-pin-display">808-080</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Canvas for Confetti -->
+  <canvas id="confetti-canvas" class="fixed inset-0 pointer-events-none z-50"></canvas>
+
+  <!-- MAIN CONTAINER WITH VIEW SWITCHING -->
+  <main class="w-full max-w-4xl px-4 my-auto flex flex-col items-center justify-center z-10 py-4">
+
+    <!-- ================= 1. START / LOBBY SCREEN ================= -->
+    <section id="lobby-screen" class="w-full max-w-md bg-white text-gray-900 rounded-3xl p-6 sm:p-8 shadow-2xl text-center space-y-6 transform transition-all">
+      <div class="space-y-2">
+        <div class="inline-block p-4 rounded-full bg-purple-100 text-purple-700 mb-1 animate-bounce-gentle">
+          <i class="fas fa-globe-americas text-5xl"></i>
+        </div>
+        <h1 class="text-3xl font-black text-purple-900 tracking-tight">環遊世界80天</h1>
+        <p class="text-gray-500 font-bold text-sm">經典文學 10 題知識大挑戰！</p>
+      </div>
+
+      <!-- Player Name Form -->
+      <div class="space-y-4">
+        <div>
+          <label for="player-name" class="block text-xs font-black uppercase text-gray-400 mb-1 text-left">輸入你的冒險家稱呼</label>
+          <input type="text" id="player-name" maxlength="12" placeholder="例如: 福克船長" 
+            class="w-full px-4 py-3 border-2 border-gray-300 rounded-xl text-center font-bold text-lg focus:outline-none focus:border-purple-600 focus:ring-2 focus:ring-purple-200 transition">
+        </div>
+
+        <!-- Avatar Selection -->
+        <div>
+          <span class="block text-xs font-black uppercase text-gray-400 mb-2 text-left">選擇冒險頭像</span>
+          <div class="flex justify-between space-x-2" id="avatar-selector">
+            <button onclick="selectAvatar('🎩')" class="avatar-btn p-2 rounded-xl border-2 border-purple-500 bg-purple-50 text-2xl flex-1 hover:scale-105 transition">🎩</button>
+            <button onclick="selectAvatar('🚂')" class="avatar-btn p-2 rounded-xl border-2 border-gray-200 text-2xl flex-1 hover:scale-105 transition">🚂</button>
+            <button onclick="selectAvatar('🐘')" class="avatar-btn p-2 rounded-xl border-2 border-gray-200 text-2xl flex-1 hover:scale-105 transition">🐘</button>
+            <button onclick="selectAvatar('🕵️')" class="avatar-btn p-2 rounded-xl border-2 border-gray-200 text-2xl flex-1 hover:scale-105 transition">🕵️</button>
+            <button onclick="selectAvatar('⏱️')" class="avatar-btn p-2 rounded-xl border-2 border-gray-200 text-2xl flex-1 hover:scale-105 transition">⏱️</button>
+          </div>
+        </div>
+
+        <button onclick="startGame()" class="w-full py-4 btn-green rounded-2xl font-black text-2xl tracking-wide text-white uppercase transition transform hover:scale-102">
+          READY! 開始遊戲
+        </button>
+      </div>
+
+      <div class="text-xs text-gray-400 font-medium">
+        最高可拿 10,000 分！越快回答得分越高！
+      </div>
+    </section>
+
+
+    <!-- ================= 2. QUESTION SCREEN ================= -->
+    <section id="question-screen" class="w-full hidden space-y-4">
+      <!-- Question Info Bar -->
+      <div class="flex justify-between items-center bg-black/30 backdrop-blur px-4 py-2 rounded-2xl border border-white/10">
+        <div class="font-black text-lg">
+          <span class="opacity-70 text-sm">問題</span> <span id="current-q-num" class="text-yellow-400">1</span> / 10
+        </div>
+        <div class="flex items-center space-x-3">
+          <div class="text-right">
+            <div class="text-xs text-purple-200 font-bold uppercase">目前分數</div>
+            <div id="player-score" class="font-black text-yellow-300 text-xl leading-none">0</div>
+          </div>
+          <div id="streak-badge" class="hidden bg-red-500 text-white font-black px-2.5 py-1 rounded-full text-xs animate-bounce">
+            🔥 <span id="streak-count">0</span> 連勝
+          </div>
+        </div>
+      </div>
+
+      <!-- Main Question Card & Visual Timer -->
+      <div class="bg-white text-gray-900 rounded-3xl p-6 shadow-2xl relative flex flex-col md:flex-row items-center space-y-4 md:space-y-0 md:space-x-6 min-h-[220px]">
+        <!-- Circular Timer Widget -->
+        <div class="relative w-24 h-24 flex-shrink-0 flex items-center justify-center">
+          <svg class="w-full h-full transform -rotate-90 timer-svg">
+            <circle cx="48" cy="48" r="40" stroke="#e5e7eb" stroke-width="8" fill="transparent"/>
+            <circle id="timer-progress" cx="48" cy="48" r="40" stroke="#864cbf" stroke-width="8" fill="transparent" 
+              stroke-dasharray="251.2" stroke-dashoffset="0" stroke-linecap="round"/>
+          </svg>
+          <span id="timer-text" class="absolute font-black text-3xl text-purple-900">20</span>
+        </div>
+
+        <!-- Question Text & Icon Scene -->
+        <div class="flex-1 text-center md:text-left space-y-2 w-full">
+          <div class="flex items-center justify-center md:justify-start space-x-2 text-purple-700 text-sm font-black uppercase">
+            <span id="q-category-icon"><i class="fas fa-book"></i></span>
+            <span id="q-category-text">環遊世界八十天</span>
+          </div>
+          <h2 id="question-title" class="text-xl sm:text-2xl font-black leading-snug text-gray-800 min-h-[3rem] flex items-center">
+            載入問題中...
+          </h2>
+        </div>
+      </div>
+
+      <!-- Answer Options Grid (Kahoot Shapes) -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 pt-2">
+        <!-- Option A (Red Triangle) -->
+        <button onclick="selectAnswer(0)" id="option-btn-0" class="btn-red p-4 sm:p-5 rounded-2xl flex items-center space-x-4 text-left transition transform hover:scale-[1.01] active:scale-95 group">
+          <div class="w-10 h-10 rounded-xl bg-black/20 flex items-center justify-center text-white text-2xl font-black flex-shrink-0">
+            ▲
+          </div>
+          <span id="option-text-0" class="font-bold text-lg sm:text-xl text-white flex-1 leading-snug">選項 A</span>
+        </button>
+
+        <!-- Option B (Blue Diamond) -->
+        <button onclick="selectAnswer(1)" id="option-btn-1" class="btn-blue p-4 sm:p-5 rounded-2xl flex items-center space-x-4 text-left transition transform hover:scale-[1.01] active:scale-95 group">
+          <div class="w-10 h-10 rounded-xl bg-black/20 flex items-center justify-center text-white text-2xl font-black flex-shrink-0">
+            ◆
+          </div>
+          <span id="option-text-1" class="font-bold text-lg sm:text-xl text-white flex-1 leading-snug">選項 B</span>
+        </button>
+
+        <!-- Option C (Yellow Circle) -->
+        <button onclick="selectAnswer(2)" id="option-btn-2" class="btn-yellow p-4 sm:p-5 rounded-2xl flex items-center space-x-4 text-left transition transform hover:scale-[1.01] active:scale-95 group">
+          <div class="w-10 h-10 rounded-xl bg-black/20 flex items-center justify-center text-white text-2xl font-black flex-shrink-0">
+            ●
+          </div>
+          <span id="option-text-2" class="font-bold text-lg sm:text-xl text-gray-900 flex-1 leading-snug">選項 C</span>
+        </button>
+
+        <!-- Option D (Green Square) -->
+        <button onclick="selectAnswer(3)" id="option-btn-3" class="btn-green p-4 sm:p-5 rounded-2xl flex items-center space-x-4 text-left transition transform hover:scale-[1.01] active:scale-95 group">
+          <div class="w-10 h-10 rounded-xl bg-black/20 flex items-center justify-center text-white text-2xl font-black flex-shrink-0">
+            ■
+          </div>
+          <span id="option-text-3" class="font-bold text-lg sm:text-xl text-white flex-1 leading-snug">選項 D</span>
+        </button>
+      </div>
+    </section>
+
+
+    <!-- ================= 3. ANSWER REVEAL SCREEN ================= -->
+    <section id="feedback-screen" class="w-full hidden flex-col items-center justify-center text-center space-y-6 py-8">
+      <div id="feedback-card" class="bg-white rounded-3xl p-8 shadow-2xl text-gray-900 w-full max-w-lg transform transition-all space-y-4">
+        <div id="feedback-icon" class="text-7xl animate-bounce-gentle">
+          🎉
+        </div>
+        <h2 id="feedback-title" class="text-3xl font-black tracking-tight">
+          答對了！
+        </h2>
+        <div id="feedback-pts" class="text-2xl font-black text-purple-700 bg-purple-100 py-2 px-6 rounded-full inline-block">
+          +950 分
+        </div>
+        <p id="feedback-explanation" class="text-gray-600 font-bold text-sm pt-2">
+          正確答案是：儒勒·凡爾納
+        </p>
+      </div>
+
+      <button onclick="nextQuestion()" class="btn-yellow px-8 py-4 rounded-2xl font-black text-2xl text-gray-900 shadow-xl hover:scale-105 transition">
+        下一題 <i class="fas fa-arrow-right ml-2"></i>
+      </button>
+    </section>
+
+
+    <!-- ================= 4. SCOREBOARD / LEADERBOARD ================= -->
+    <section id="scoreboard-screen" class="w-full hidden max-w-lg bg-purple-900/90 backdrop-blur border-2 border-white/20 text-white rounded-3xl p-6 sm:p-8 shadow-2xl text-center space-y-6">
+      <h2 class="text-2xl font-black tracking-wider uppercase text-yellow-400">目前排行榜</h2>
+      
+      <div class="space-y-3" id="scoreboard-list">
+        <!-- Rendered dynamically -->
+      </div>
+
+      <button onclick="continueAfterScoreboard()" class="w-full py-4 btn-blue rounded-2xl font-black text-xl text-white shadow-lg hover:scale-102 transition">
+        繼續挑戰
+      </button>
+    </section>
+
+
+    <!-- ================= 5. FINAL PODIUM SCREEN ================= -->
+    <section id="podium-screen" class="w-full hidden flex-col items-center space-y-6 text-center">
+      <div class="space-y-2">
+        <h1 class="text-4xl sm:text-5xl font-black text-yellow-300 drop-shadow-md">挑戰完成！</h1>
+        <p class="text-purple-200 font-bold">《環遊世界八十天》冒險大成功</p>
+      </div>
+
+      <!-- Animated Podium Stage -->
+      <div class="flex items-end justify-center space-x-2 sm:space-x-4 w-full max-w-md h-52 pt-4">
+        <!-- 2nd Place -->
+        <div class="flex-1 flex flex-col items-center">
+          <span class="text-sm font-bold mb-1">🤖 機器人</span>
+          <div class="podium-2 w-full h-28 rounded-t-2xl flex flex-col items-center justify-center font-black text-gray-800 shadow-lg">
+            <span class="text-2xl">2</span>
+            <span class="text-xs" id="score-rank-2">7,200</span>
+          </div>
+        </div>
+
+        <!-- 1st Place (Winner) -->
+        <div class="flex-1 flex flex-col items-center">
+          <div class="text-3xl animate-bounce mb-1" id="podium-winner-avatar">🎩</div>
+          <span class="text-base font-black text-yellow-300 mb-1" id="podium-winner-name">福克船長</span>
+          <div class="podium-1 w-full h-40 rounded-t-2xl flex flex-col items-center justify-center font-black text-gray-900 shadow-2xl border-t-4 border-yellow-200">
+            <span class="text-4xl">1</span>
+            <span class="text-sm" id="podium-winner-score">9,500</span>
+          </div>
+        </div>
+
+        <!-- 3rd Place -->
+        <div class="flex-1 flex flex-col items-center">
+          <span class="text-sm font-bold mb-1">探險家 B</span>
+          <div class="podium-3 w-full h-20 rounded-t-2xl flex flex-col items-center justify-center font-black text-white shadow-lg">
+            <span class="text-xl">3</span>
+            <span class="text-xs" id="score-rank-3">5,400</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Breakdown Stats Card -->
+      <div class="bg-white text-gray-900 rounded-3xl p-6 w-full max-w-md shadow-2xl space-y-4">
+        <h3 class="font-black text-lg text-purple-900 border-b pb-2">個人表現戰報</h3>
+        <div class="grid grid-cols-3 gap-2 text-center">
+          <div class="bg-purple-50 p-3 rounded-2xl">
+            <div class="text-xs text-gray-500 font-bold">總得分</div>
+            <div id="final-score" class="text-xl font-black text-purple-700">0</div>
+          </div>
+          <div class="bg-purple-50 p-3 rounded-2xl">
+            <div class="text-xs text-gray-500 font-bold">答對率</div>
+            <div id="final-accuracy" class="text-xl font-black text-green-600">0%</div>
+          </div>
+          <div class="bg-purple-50 p-3 rounded-2xl">
+            <div class="text-xs text-gray-500 font-bold">最高連勝</div>
+            <div id="final-streak" class="text-xl font-black text-red-500">0🔥</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex space-x-4 w-full max-w-md">
+        <button onclick="restartGame()" class="flex-1 py-4 btn-green rounded-2xl font-black text-xl text-white shadow-xl hover:scale-105 transition">
+          <i class="fas fa-redo ml-1 mr-2"></i> 再玩一次
+        </button>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="py-3 text-center text-xs text-purple-300 opacity-70">
+    Based on Jules Verne's "Around the World in Eighty Days" • Kahoot Style Interactive Edition
+  </footer>
+
+
+  <!-- JAVASCRIPT GAME LOGIC & AUDIO SYNTHESIZER -->
+  <script>
+    // -------------------------------------------------------------
+    // 1. QUESTION DATASET (10 Questions in Traditional Chinese)
+    // -------------------------------------------------------------
+    const quizQuestions = [
+      {
+        question: "《環遊世界八十天》這本著名冒險小說的作者是誰？",
+        options: ["莎士比亞 (Shakespeare)", "儒勒·凡爾納 (Jules Verne)", "大仲馬 (Alexandre Dumas)", "柯南·道爾 (Conan Doyle)"],
+        correct: 1,
+        icon: "fa-pen-nib",
+        explanation: "作者是法國著名的科幻與冒險小說之父——儒勒·凡爾納 (Jules Verne)。"
+      },
+      {
+        question: "主角菲利普·福克（Phileas Fogg）是在哪一個私人俱樂部與同伴立下賭局的？",
+        options: ["改革俱樂部 (Reform Club)", "探險家俱樂部 (Explorers Club)", "皇家地理學會 (Royal Geographical Society)", "紳士俱樂部 (Gentlemen's Club)"],
+        correct: 0,
+        icon: "fa-building",
+        explanation: "福克是在倫敦著名的「改革俱樂部」(Reform Club) 與牌友們立下八十天環遊世界的賭局。"
+      },
+      {
+        question: "福克為了賭局押上了多少身家財產？",
+        options: ["1,000 英鎊", "5,000 英鎊", "20,000 英鎊", "100,000 英鎊"],
+        correct: 2,
+        icon: "fa-coins",
+        explanation: "福克押上了他全部財產的一半——兩萬英鎊（相當於當時的一筆鉅款）。"
+      },
+      {
+        question: "福克的忠心法國籍僕人叫什麼名字？",
+        options: ["費克斯 (Fix)", "萬事通 / 路路通 (Passepartout)", "奧達 (Aouda)", "華生 (Watson)"],
+        correct: 1,
+        icon: "fa-user-astronaut",
+        explanation: "忠心的法國僕人名叫讓·萬事通（Jean Passepartout）。"
+      },
+      {
+        question: "警探費克斯（Fix）一路追捕福克的原因是什麼？",
+        options: ["福克欠債逃跑", "誤以為福克是英格蘭銀行的搶匪", "福克偷走了皇家寶物", "福克涉嫌謀殺案"],
+        correct: 1,
+        icon: "fa-user-secret",
+        explanation: "費克斯警探誤以為行蹤匆忙、攜帶大量現金的福克就是偷竊英格蘭銀行的強盜。"
+      },
+      {
+        question: "在印度旅行途中，福克一行人搭乘什麼交通工具並救下了奧達夫人（Aouda）？",
+        options: ["熱氣球", "駱駝", "蒸汽火車", "大象"],
+        correct: 3,
+        icon: "fa-hand-holding-heart",
+        explanation: "因為鐵路中斷，福克花重金買下了一頭大象，並在途中機智地救出了奧達夫人。"
+      },
+      {
+        question: "福克一行人在印度救下的「奧達夫人」，原本正面臨什麼危險？",
+        options: ["被部落海盜綁架", "被迫進行「娑提」（殉葬）儀式", "被關進皇家監獄", "感染了嚴重的傳染病"],
+        correct: 1,
+        icon: "fa-fire",
+        explanation: "奧達夫人當時被迫參與傳統的「娑提」殉葬儀式，差點被活活燒死。"
+      },
+      {
+        question: "當燃煤用盡時，福克採取了什麼驚人舉動讓「Henrietta 號」順利抵達愛爾蘭？",
+        options: ["買下整艘船並拆解木製船身充當燃料", "請所有乘客一起划槳", "改用熱氣球拖曳船隻", "棄船改搭帆船"],
+        correct: 0,
+        icon: "fa-ship",
+        explanation: "福克果斷買下船隻，將木製甲板與艙房拆解燒毀充當蒸汽機的燃料。"
+      },
+      {
+        question: "福克之所以能「賺到整整一天（24小時）」，最關鍵的原因是什麼？",
+        options: ["蒸汽船速度比預期快了許多", "警探算錯了日期", "一路向東環球行駛，跨越了國際換日線", "倫敦的大本鐘時間走慢了"],
+        correct: 2,
+        icon: "fa-clock",
+        explanation: "因為一路向東環繞地球，順應自轉方向，每天賺得4分鐘，繞行一圈累積了整整24小時！"
+      },
+      {
+        question: "故事最後，福克雖然扣除開銷後幾乎沒有賺到錢，但他獲得了什麼最寶貴的收穫？",
+        options: ["成為英國首富", "獲頒英國皇家勳章", "愛情（與奧達夫人結婚）與忠誠的友誼", "買下了全世界最大的船隊"],
+        correct: 2,
+        icon: "fa-crown",
+        explanation: "福克贏得了奧達夫人的真心與萬事通的忠誠，這比任何財富都更具價值。"
+      }
+    ];
+
+    // -------------------------------------------------------------
+    // 2. AUDIO SYNTHESIZER (Web Audio API - No external files needed)
+    // -------------------------------------------------------------
+    class SoundEffects {
+      constructor() {
+        this.ctx = null;
+        this.enabled = true;
+      }
+
+      init() {
+        if (!this.ctx) {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          this.ctx = new AudioContext();
+        }
+      }
+
+      playTone(freq, duration, type = 'sine', volume = 0.1) {
+        if (!this.enabled || !this.ctx) return;
+        try {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = type;
+          osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+          gain.gain.setValueAtTime(volume, this.ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + duration);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start();
+          osc.stop(this.ctx.currentTime + duration);
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      playTick() {
+        this.playTone(800, 0.05, 'square', 0.03);
+      }
+
+      playCorrect() {
+        if (!this.enabled || !this.ctx) return;
+        const now = this.ctx.currentTime;
+        [523.25, 659.25, 783.99, 1046.50].forEach((freq, idx) => {
+          setTimeout(() => {
+            this.playTone(freq, 0.25, 'triangle', 0.15);
+          }, idx * 80);
+        });
+      }
+
+      playWrong() {
+        if (!this.enabled || !this.ctx) return;
+        this.playTone(200, 0.3, 'sawtooth', 0.2);
+        setTimeout(() => this.playTone(150, 0.4, 'sawtooth', 0.2), 150);
+      }
+
+      playVictory() {
+        if (!this.enabled || !this.ctx) return;
+        const notes = [440, 554.37, 659.25, 880];
+        notes.forEach((freq, idx) => {
+          setTimeout(() => {
+            this.playTone(freq, 0.4, 'triangle', 0.2);
+          }, idx * 120);
+        });
+      }
+    }
+
+    const soundEngine = new SoundEffects();
+    let isSoundMuted = false;
+
+    function toggleSound() {
+      isSoundMuted = !isSoundMuted;
+      soundEngine.enabled = !isSoundMuted;
+      const icon = document.getElementById('sound-icon');
+      if (isSoundMuted) {
+        icon.className = 'fas fa-volume-mute text-lg text-red-300';
+      } else {
+        icon.className = 'fas fa-volume-up text-lg text-white';
+        soundEngine.init();
+        soundEngine.playTick();
+      }
+    }
+
+
+    // -------------------------------------------------------------
+    // 3. GAME STATE MANAGEMENT
+    // -------------------------------------------------------------
+    let currentQuestionIndex = 0;
+    let score = 0;
+    let streak = 0;
+    let maxStreak = 0;
+    let correctCount = 0;
+    let playerName = "福克船長";
+    let playerAvatar = "🎩";
+    
+    // Timer Variables
+    const QUESTION_TIME_LIMIT = 20; // Seconds
+    let timeLeft = QUESTION_TIME_LIMIT;
+    let timerInterval = null;
+    let questionStartTime = 0;
+
+    // AI Opponents for Kahoot Leaderboard Simulation
+    let bot1Score = 0;
+    let bot2Score = 0;
+
+
+    // -------------------------------------------------------------
+    // 4. LOBBY & INITIALIZATION
+    // -------------------------------------------------------------
+    function selectAvatar(avatarEmoji) {
+      playerAvatar = avatarEmoji;
+      soundEngine.init();
+      soundEngine.playTick();
+
+      document.querySelectorAll('.avatar-btn').forEach(btn => {
+        if (btn.innerText.includes(avatarEmoji)) {
+          btn.classList.add('border-purple-500', 'bg-purple-50');
+          btn.classList.remove('border-gray-200');
+        } else {
+          btn.classList.remove('border-purple-500', 'bg-purple-50');
+          btn.classList.add('border-gray-200');
+        }
+      });
+    }
+
+    function startGame() {
+      soundEngine.init();
+      const nameInput = document.getElementById('player-name').value.trim();
+      if (nameInput) {
+        playerName = nameInput;
+      }
+
+      // Reset State
+      currentQuestionIndex = 0;
+      score = 0;
+      streak = 0;
+      maxStreak = 0;
+      correctCount = 0;
+      bot1Score = 0;
+      bot2Score = 0;
+
+      // UI Transitions
+      document.getElementById('lobby-screen').classList.add('hidden');
+      document.getElementById('pin-badge').classList.remove('hidden');
+      document.getElementById('question-screen').classList.remove('hidden');
+
+      loadQuestion();
+    }
+
+
+    // -------------------------------------------------------------
+    // 5. QUESTION DISPLAY & TIMER
+    // -------------------------------------------------------------
+    function loadQuestion() {
+      const qData = quizQuestions[currentQuestionIndex];
+
+      // Update Question Meta
+      document.getElementById('current-q-num').innerText = currentQuestionIndex + 1;
+      document.getElementById('player-score').innerText = score.toLocaleString();
+      document.getElementById('question-title').innerText = qData.question;
+      document.getElementById('q-category-icon').innerHTML = `<i class="fas ${qData.icon}"></i>`;
+
+      // Update Options
+      for (let i = 0; i < 4; i++) {
+        const btn = document.getElementById(`option-btn-${i}`);
+        const textSpan = document.getElementById(`option-text-${i}`);
+        textSpan.innerText = qData.options[i];
+
+        // Reset Styles
+        btn.disabled = false;
+        btn.classList.remove('option-selected', 'option-dim', 'opacity-50');
+      }
+
+      // Reset Streak Badge
+      const streakBadge = document.getElementById('streak-badge');
+      if (streak > 1) {
+        streakBadge.classList.remove('hidden');
+        document.getElementById('streak-count').innerText = streak;
+      } else {
+        streakBadge.classList.add('hidden');
+      }
+
+      // Start Timer
+      startTimer();
+    }
+
+    function startTimer() {
+      timeLeft = QUESTION_TIME_LIMIT;
+      questionStartTime = Date.now();
+      updateTimerUI();
+
+      clearInterval(timerInterval);
+      timerInterval = setInterval(() => {
+        timeLeft--;
+        soundEngine.playTick();
+        updateTimerUI();
+
+        if (timeLeft <= 0) {
+          clearInterval(timerInterval);
+          handleTimeOut();
+        }
+      }, 1000);
+    }
+
+    function updateTimerUI() {
+      document.getElementById('timer-text').innerText = timeLeft;
+      
+      // Update SVG Dash Offset
+      const circle = document.getElementById('timer-progress');
+      const circumference = 2 * Math.PI * 40; // ~251.2
+      const progress = timeLeft / QUESTION_TIME_LIMIT;
+      const offset = circumference * (1 - progress);
+      circle.style.strokeDashoffset = offset;
+
+      if (timeLeft <= 5) {
+        circle.setAttribute('stroke', '#e21b3c'); // Red when urgent
+      } else {
+        circle.setAttribute('stroke', '#864cbf');
+      }
+    }
+
+
+    // -------------------------------------------------------------
+    // 6. ANSWER HANDLING & SCORING
+    // -------------------------------------------------------------
+    function selectAnswer(selectedIndex) {
+      clearInterval(timerInterval);
+      const qData = quizQuestions[currentQuestionIndex];
+      const timeTakenRatio = (Date.now() - questionStartTime) / (QUESTION_TIME_LIMIT * 1000);
+      const isCorrect = (selectedIndex === qData.correct);
+
+      // Disable all option buttons
+      for (let i = 0; i < 4; i++) {
+        const btn = document.getElementById(`option-btn-${i}`);
+        btn.disabled = true;
+        if (i === selectedIndex) {
+          btn.classList.add('option-selected');
+        } else {
+          btn.classList.add('option-dim');
+        }
+      }
+
+      // Simulate Bot Scores
+      simulateBots();
+
+      let addedPoints = 0;
+      if (isCorrect) {
+        soundEngine.playCorrect();
+        correctCount++;
+        streak++;
+        if (streak > maxStreak) maxStreak = streak;
+
+        // Kahoot Score Formula: max 1000 pts based on speed + streak bonus
+        const speedBonus = Math.max(0, 1 - (timeTakenRatio / 2));
+        addedPoints = Math.round(500 + (500 * speedBonus) + (streak > 1 ? 100 : 0));
+        score += addedPoints;
+
+        triggerMicroConfetti();
+      } else {
+        soundEngine.playWrong();
+        streak = 0;
+      }
+
+      // Show Feedback after a brief delay
+      setTimeout(() => {
+        showFeedback(isCorrect, addedPoints, qData);
+      }, 900);
+    }
+
+    function handleTimeOut() {
+      soundEngine.playWrong();
+      streak = 0;
+      const qData = quizQuestions[currentQuestionIndex];
+
+      for (let i = 0; i < 4; i++) {
+        document.getElementById(`option-btn-${i}`).disabled = true;
+        document.getElementById(`option-btn-${i}`).classList.add('option-dim');
+      }
+
+      showFeedback(false, 0, qData, "時間到！");
+    }
+
+    function simulateBots() {
+      // Simulate competitive bot scoring
+      if (Math.random() > 0.2) bot1Score += Math.floor(Math.random() * 300 + 650);
+      if (Math.random() > 0.3) bot2Score += Math.floor(Math.random() * 300 + 550);
+    }
+
+
+    // -------------------------------------------------------------
+    // 7. FEEDBACK & SCOREBOARD
+    // -------------------------------------------------------------
+    function showFeedback(isCorrect, points, qData, customTitle) {
+      document.getElementById('question-screen').classList.add('hidden');
+      const feedbackScreen = document.getElementById('feedback-screen');
+      feedbackScreen.classList.remove('hidden');
+
+      const card = document.getElementById('feedback-card');
+      const title = document.getElementById('feedback-title');
+      const icon = document.getElementById('feedback-icon');
+      const pts = document.getElementById('feedback-pts');
+      const explanation = document.getElementById('feedback-explanation');
+
+      if (isCorrect) {
+        card.className = "bg-white rounded-3xl p-8 shadow-2xl text-gray-900 w-full max-w-lg space-y-4 border-4 border-green-500";
+        icon.innerText = "🎉";
+        title.innerText = customTitle || (streak > 2 ? `🔥 ${streak} 連勝！答對了！` : "答對了！");
+        title.className = "text-3xl font-black text-green-600 tracking-tight";
+        pts.innerText = `+${points} 分`;
+        pts.classList.remove('hidden');
+      } else {
+        card.className = "bg-white rounded-3xl p-8 shadow-2xl text-gray-900 w-full max-w-lg space-y-4 border-4 border-red-500";
+        icon.innerText = "❌";
+        title.innerText = customTitle || "答錯了！加油！";
+        title.className = "text-3xl font-black text-red-600 tracking-tight";
+        pts.classList.add('hidden');
+      }
+
+      explanation.innerText = qData.explanation;
+    }
+
+    function nextQuestion() {
+      document.getElementById('feedback-screen').classList.add('hidden');
+
+      // Every 3 questions or after question 10, show Scoreboard
+      if ((currentQuestionIndex + 1) % 3 === 0 || currentQuestionIndex === quizQuestions.length - 1) {
+        showScoreboard();
+      } else {
+        currentQuestionIndex++;
+        document.getElementById('question-screen').classList.remove('hidden');
+        loadQuestion();
+      }
+    }
+
+    function showScoreboard() {
+      const sbScreen = document.getElementById('scoreboard-screen');
+      sbScreen.classList.remove('hidden');
+
+      // Sort Scores
+      const leaderboard = [
+        { name: `${playerAvatar} ${playerName}`, score: score, isPlayer: true },
+        { name: "🕵️ 警探費克斯", score: bot1Score, isPlayer: false },
+        { name: "🚂 萬事通", score: bot2Score, isPlayer: false }
+      ].sort((a, b) => b.score - a.score);
+
+      const listContainer = document.getElementById('scoreboard-list');
+      listContainer.innerHTML = '';
+
+      leaderboard.forEach((item, idx) => {
+        const row = document.createElement('div');
+        row.className = `flex justify-between items-center p-4 rounded-2xl font-bold ${
+          item.isPlayer ? 'bg-yellow-400 text-gray-900 border-2 border-white' : 'bg-black/30 text-white'
+        }`;
+        row.innerHTML = `
+          <div class="flex items-center space-x-3">
+            <span class="text-xl font-black">${idx + 1}</span>
+            <span>${item.name}</span>
+          </div>
+          <span class="font-black text-lg">${item.score.toLocaleString()}</span>
+        `;
+        listContainer.appendChild(row);
+      });
+    }
+
+    function continueAfterScoreboard() {
+      document.getElementById('scoreboard-screen').classList.add('hidden');
+      currentQuestionIndex++;
+
+      if (currentQuestionIndex < quizQuestions.length) {
+        document.getElementById('question-screen').classList.remove('hidden');
+        loadQuestion();
+      } else {
+        showFinalPodium();
+      }
+    }
+
+
+    // -------------------------------------------------------------
+    // 8. FINAL PODIUM & CELEBRATION
+    // -------------------------------------------------------------
+    function showFinalPodium() {
+      soundEngine.playVictory();
+      triggerGrandConfetti();
+
+      document.getElementById('question-screen').classList.add('hidden');
+      document.getElementById('podium-screen').classList.remove('hidden');
+
+      // Final Stats Updates
+      document.getElementById('podium-winner-name').innerText = playerName;
+      document.getElementById('podium-winner-avatar').innerText = playerAvatar;
+      document.getElementById('podium-winner-score').innerText = score.toLocaleString();
+      document.getElementById('final-score').innerText = score.toLocaleString();
+      
+      const accuracy = Math.round((correctCount / quizQuestions.length) * 100);
+      document.getElementById('final-accuracy').innerText = `${accuracy}%`;
+      document.getElementById('final-streak').innerText = `${maxStreak}🔥`;
+
+      // Set Bot Rank Scores
+      document.getElementById('score-rank-2').innerText = Math.min(score - 100, bot1Score).toLocaleString();
+      document.getElementById('score-rank-3').innerText = Math.min(score - 500, bot2Score).toLocaleString();
+    }
+
+    function restartGame() {
+      document.getElementById('podium-screen').classList.add('hidden');
+      document.getElementById('lobby-screen').classList.remove('hidden');
+    }
+
+
+    // -------------------------------------------------------------
+    // 9. CONFETTI EFFECTS
+    // -------------------------------------------------------------
+    function triggerMicroConfetti() {
+      if (typeof confetti === 'function') {
+        confetti({
+          particleCount: 40,
+          spread: 60,
+          origin: { y: 0.8 }
+        });
+      }
+    }
+
+    function triggerGrandConfetti() {
+      if (typeof confetti === 'function') {
+        const duration = 3 * 1000;
+        const end = Date.now() + duration;
+
+        (function frame() {
+          confetti({
+            particleCount: 5,
+            angle: 60,
+            spread: 55,
+            origin: { x: 0 }
+          });
+          confetti({
+            particleCount: 5,
+            angle: 120,
+            spread: 55,
+            origin: { x: 1 }
+          });
+
+          if (Date.now() < end) {
+            requestAnimationFrame(frame);
+          }
+        })();
+      }
+    }
+
+    // Initialize UI default state on window load
+    window.onload = function() {
+      // Warm up UI
+      console.log("Kahoot 80 Days World Tour initialized!");
+    }
+  </script>
+</body>
+</html>
