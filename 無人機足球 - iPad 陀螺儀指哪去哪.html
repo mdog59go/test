@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<!-- saved from url=(0046)https://mdog59go.github.io/class/ipadairk.html -->
+<html lang="zh-TW"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>無人機足球 - iPad 陀螺儀指哪去哪</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #fff;
+            user-select: none;
+        }
+        canvas {
+            display: block;
+        }
+        .overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+        }
+        .panel {
+            background: rgba(10, 10, 10, 0.85);
+            border: 2px solid #ff8800;
+            border-radius: 12px;
+            padding: 30px;
+            text-align: center;
+            pointer-events: auto;
+            box-shadow: 0 0 20px rgba(255, 136, 0, 0.3);
+            max-width: 600px;
+        }
+        h1, h2 { color: #ff8800; margin-top: 0; }
+        input[type="text"] {
+            width: 80%; padding: 10px; font-size: 18px; margin: 15px 0;
+            border: 1px solid #ff8800; background: #222; color: #fff;
+            border-radius: 5px; text-align: center;
+        }
+        button {
+            background: #ff8800; color: #000; border: none;
+            padding: 12px 24px; font-size: 18px; font-weight: bold;
+            border-radius: 6px; cursor: pointer; transition: 0.2s;
+            margin-top: 10px;
+        }
+        button:hover { background: #ffa600; box-shadow: 0 0 10px #ff8800; }
+        
+        #hud {
+            position: absolute; top: 15px; left: 15px; right: 15px;
+            display: flex; justify-content: space-between;
+            font-size: 20px; font-weight: bold; text-shadow: 2px 2px 4px #000;
+            z-index: 5; opacity: 0; transition: opacity 0.5s;
+        }
+        .hud-box {
+            background: rgba(255, 136, 0, 0.2); border: 1px solid #ff8800;
+            padding: 8px 20px; border-radius: 8px; backdrop-filter: blur(2px);
+        }
+        
+        #flash-fx {
+            position: absolute; top:0; left:0; width:100%; height:100%;
+            background: #fff; opacity: 0; pointer-events: none; z-index: 20;
+            transition: opacity 0.1s;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="flash-fx"></div>
+    
+    <div id="hud">
+        <div class="hud-box" id="hud-name">選手: ---</div>
+        <div class="hud-box" id="hud-score">得分: 0</div>
+        <div class="hud-box" id="hud-time">時間: 03:00</div>
+        <div class="hud-box" id="hud-alt">高度: 0.0m</div>
+    </div>
+
+    <!-- 步驟 1：輸入姓名 -->
+    <div class="overlay" id="screen-name">
+        <div class="panel">
+            <h1>無人機足球闖關練習</h1>
+            <p>請輸入名稱 (預設:一甲國小練習生)</p>
+            <input type="text" id="input-name" placeholder="輸入姓名" autocomplete="off">
+            <br>
+            <button onclick="requestGyroAndStart()">點擊解鎖陀螺儀並開始</button>
+        </div>
+    </div>
+
+    <!-- 遊戲結束畫面 -->
+    <div class="overlay" id="screen-gameover" style="display: none;">
+        <div class="panel">
+            <h1>時間到！測驗結束</h1>
+            <h2 id="final-name">選手: </h2>
+            <h1 id="final-score" style="font-size: 48px; color: #fff;">總分: 0</h1>
+            <button onclick="location.reload()">重新開始</button>
+        </div>
+    </div>
+
+    <script src="./無人機足球 - iPad 陀螺儀指哪去哪_files/three.min.js.下載"></script>
+
+    <script>
+        let studentName = "";
+        let gameState = "NAME"; 
+        let score = 0;
+        let timeLeft = 180;
+        let startTime = 0;
+        let shakeTime = 0;
+        
+        // 陀螺儀校正基準與即時數值
+        let calibrationOffset = { beta: 0, gamma: 0 };
+        let isCalibrated = false;
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0a0a0a);
+        
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const ambientLight = new THREE.AmbientLight(0x404040, 1.5);
+        scene.add(ambientLight);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(10, 20, 10);
+        scene.add(dirLight);
+
+        const gridHelper = new THREE.GridHelper(200, 100, 0xff8800, 0x663300);
+        scene.add(gridHelper);
+
+        const obstacles = [];
+        let ghostHoops = [];
+        let nameWalls = [];
+        let activeHoop = null;
+
+        function createDrone(isPlayer) {
+            const group = new THREE.Group();
+            const radius = 0.6;
+
+            const coreGeo = new THREE.CylinderGeometry(0.15, 0.15, 0.1, 16);
+            const coreMat = new THREE.MeshPhongMaterial({ color: 0x222222 });
+            const core = new THREE.Mesh(coreGeo, coreMat);
+            group.add(core);
+
+            const cageMat = new THREE.MeshStandardMaterial({
+                color: isPlayer ? 0xff6600 : 0x555555,
+                wireframe: true,
+                transparent: true, opacity: 0.8,
+                roughness: 0.3, metalness: 0.5
+            });
+            const cageGeo = new THREE.IcosahedronGeometry(radius, 1);
+            const cage = new THREE.Mesh(cageGeo, cageMat);
+            group.add(cage);
+
+            const ringMat = new THREE.MeshStandardMaterial({ color: isPlayer ? 0xffffff : 0xaaaaaa });
+            const ringGeo = new THREE.TorusGeometry(radius, 0.02, 8, 32);
+            const ringX = new THREE.Mesh(ringGeo, ringMat); ringX.rotation.y = Math.PI/2;
+            const ringY = new THREE.Mesh(ringGeo, ringMat); ringY.rotation.x = Math.PI/2;
+            const ringZ = new THREE.Mesh(ringGeo, ringMat);
+            group.add(ringX, ringY, ringZ);
+
+            const props = [];
+            const propGeo = new THREE.BoxGeometry(0.3, 0.01, 0.04);
+            const propMat = new THREE.MeshBasicMaterial({ color: 0xaaaaaa });
+            for(let i=0; i<4; i++) {
+                const prop = new THREE.Mesh(propGeo, propMat);
+                prop.position.set((i%2===0?1:-1)*0.25, 0.05, (i<2?1:-1)*0.25);
+                group.add(prop);
+                props.push(prop);
+            }
+
+            const frontColor = isPlayer ? 0x0044ff : 0xffff00;
+            const frontLight = new THREE.PointLight(frontColor, 2, 4);
+            frontLight.position.set(0, 0, -radius);
+            group.add(frontLight);
+            
+            const ledGeo = new THREE.SphereGeometry(0.05, 8, 8);
+            const frontLedMesh = new THREE.Mesh(ledGeo, new THREE.MeshBasicMaterial({color: frontColor}));
+            frontLedMesh.position.set(0, 0, -radius);
+            group.add(frontLedMesh);
+
+            const rearLight = new THREE.PointLight(0xff0000, 2, 4);
+            rearLight.position.set(0, 0, radius);
+            group.add(rearLight);
+            
+            const rearLedMesh = new THREE.Mesh(ledGeo, new THREE.MeshBasicMaterial({color: 0xff0000}));
+            rearLedMesh.position.set(0, 0, radius);
+            group.add(rearLedMesh);
+
+            return { group, props, frontLight, rearLight, frontLedMesh, rearLedMesh, radius };
+        }
+
+        const player = createDrone(true);
+        player.group.position.set(0, 5, 0);
+        scene.add(player.group);
+
+        const ai = createDrone(false);
+        ai.group.position.set(10, 5, -10);
+        let aiTarget = new THREE.Vector3();
+        scene.add(ai.group);
+
+        function spawnObstacles() {
+            const geos = [
+                new THREE.BoxGeometry(2,2,2),
+                new THREE.SphereGeometry(1.5, 16, 16),
+                new THREE.ConeGeometry(1.5, 3, 16)
+            ];
+            const colors = [0x00ffff, 0xff00ff, 0x00ff00, 0x8800ff];
+            
+            for(let i=0; i<30; i++) {
+                const geo = geos[Math.floor(Math.random() * geos.length)];
+                const mat = new THREE.MeshStandardMaterial({ 
+                    color: colors[Math.floor(Math.random() * colors.length)],
+                    roughness: 0.2, metalness: 0.1
+                });
+                const mesh = new THREE.Mesh(geo, mat);
+                mesh.position.set(
+                    (Math.random() - 0.5) * 80,
+                    Math.random() * 20 + 2,
+                    (Math.random() - 0.5) * 80
+                );
+                mesh.rotation.set(Math.random()*Math.PI, Math.random()*Math.PI, 0);
+                mesh.geometry.computeBoundingSphere();
+                mesh.userData.radius = mesh.geometry.boundingSphere.radius;
+                scene.add(mesh);
+                obstacles.push(mesh);
+            }
+        }
+        spawnObstacles();
+
+        function updateNameWalls(name) {
+            nameWalls.forEach(wall => scene.remove(wall));
+            nameWalls = [];
+
+            const canvas = document.createElement('canvas');
+            canvas.width = 1024;
+            canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+            
+            const gradient = ctx.createLinearGradient(0, 0, 1024, 0);
+            gradient.addColorStop(0, '#ff8800');
+            gradient.addColorStop(0.5, '#00ff88');
+            gradient.addColorStop(1, '#0088ff');
+            
+            ctx.fillStyle = gradient;
+            ctx.font = "bold 120px 'Segoe UI', Arial";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(name, 512, 128);
+
+            const texture = new THREE.CanvasTexture(canvas);
+            const wallMat = new THREE.MeshBasicMaterial({
+                map: texture, transparent: true, opacity: 0.3,
+                side: THREE.DoubleSide, depthWrite: false
+            });
+
+            const wallGeo = new THREE.PlaneGeometry(100, 25);
+            const positions = [
+                { pos: [0, 10, -50], rot: [0, 0, 0] },
+                { pos: [0, 10, 50], rot: [0, Math.PI, 0] },
+                { pos: [-50, 10, 0], rot: [0, Math.PI/2, 0] },
+                { pos: [50, 10, 0], rot: [0, -Math.PI/2, 0] }
+            ];
+
+            positions.forEach(p => {
+                const wall = new THREE.Mesh(wallGeo, wallMat);
+                wall.position.set(...p.pos);
+                wall.rotation.set(...p.rot);
+                scene.add(wall);
+                nameWalls.push(wall);
+            });
+        }
+
+        function createHoop() {
+            const r = 2.5;
+            const tube = 0.2;
+            const geo = new THREE.TorusGeometry(r, tube, 16, 32);
+            const mat = new THREE.MeshStandardMaterial({ color: 0xff0044, roughness: 0.2, metalness: 0.8 });
+            const mesh = new THREE.Mesh(geo, mat);
+            
+            mesh.position.set(
+                (Math.random() - 0.5) * 60,
+                Math.random() * 15 + 5,
+                (Math.random() - 0.5) * 60 - 10
+            );
+            mesh.rotation.y = (Math.random() - 0.5) * Math.PI;
+            scene.add(mesh);
+
+            const normal = new THREE.Vector3(0, 0, 1).applyEuler(mesh.rotation).normalize();
+            return { mesh, radius: r, tube: tube, normal, prevDot: undefined };
+        }
+        activeHoop = createHoop();
+
+        let latestBeta = 0;
+        let latestGamma = 0;
+
+        function requestGyroAndStart() {
+            const name = document.getElementById('input-name').value.trim() || "一甲國小練習生";
+            studentName = name;
+            updateNameWalls(studentName);
+
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                DeviceOrientationEvent.requestPermission().then(permissionState => {
+                    if (permissionState === 'granted') {
+                        window.addEventListener('deviceorientation', handleOrientation, true);
+                    } else {
+                        alert("需要授權陀螺儀才能遊玩！");
+                    }
+                }).catch(console.error);
+            } else {
+                window.addEventListener('deviceorientation', handleOrientation, true);
+            }
+
+            // 點擊開始時，抓取當前拿平板的角度作為「中心點（停止/水平基準）」
+            setTimeout(() => {
+                calibrationOffset.beta = latestBeta;
+                calibrationOffset.gamma = latestGamma;
+                isCalibrated = true;
+            }, 300);
+
+            document.getElementById('screen-name').style.display = 'none';
+            document.getElementById('hud').style.opacity = 1;
+            document.getElementById('hud-name').innerText = "選手: " + studentName;
+            
+            gameState = "PLAYING";
+            startTime = Date.now();
+        }
+
+        function handleOrientation(e) {
+            if (e.beta === null || e.gamma === null) return;
+            
+            let beta = e.beta;
+            let gamma = e.gamma;
+            let orientation = window.orientation || (screen.orientation ? screen.orientation.angle : 0);
+
+            if (Math.abs(orientation) === 90) {
+                latestBeta = -gamma;
+                latestGamma = beta;
+            } else {
+                latestBeta = beta;
+                latestGamma = gamma;
+            }
+        }
+
+        function triggerFlash() {
+            const fx = document.getElementById('flash-fx');
+            fx.style.opacity = 1;
+            setTimeout(() => { fx.style.opacity = 0; }, 150);
+        }
+
+        // === 核心控制：指哪就去哪 ===
+        function updatePhysics() {
+            if (gameState !== "PLAYING") return;
+
+            if (!isCalibrated) {
+                calibrationOffset.beta = latestBeta;
+                calibrationOffset.gamma = latestGamma;
+                isCalibrated = true;
+            }
+
+            // 計算相對於基準中心點的偏離量 (-1 到 1 左右)
+            let diffBeta = latestBeta - calibrationOffset.beta;   // 前後傾斜
+            let diffGamma = latestGamma - calibrationOffset.gamma; // 左右傾斜
+
+            // 限制最大靈敏度範圍
+            let inputX = Math.max(-1, Math.min(1, diffGamma / 25)); // 左右移/轉向
+            let inputZ = Math.max(-1, Math.min(1, diffBeta / 25));  // 前後進退
+            let inputY = Math.max(-1, Math.min(1, -diffBeta / 30)); // 俯仰帶動高度
+
+            // 1. 轉向：左右傾斜直接決定機頭轉向
+            player.group.rotation.y -= inputX * 0.04;
+
+            // 2. 隨時保持中慢速前進，並由傾斜微調速度與方向
+            let baseSpeed = 0.15; // 基礎中慢速前進
+            let moveDir = new THREE.Vector3(inputX * 0.8, inputY * 0.3, -1 - inputZ * 0.8);
+            moveDir.applyAxisAngle(new THREE.Vector3(0, 1, 0), player.group.rotation.y);
+
+            let targetVx = moveDir.x * baseSpeed;
+            let targetVy = moveDir.y * baseSpeed;
+            let targetVz = moveDir.z * baseSpeed;
+
+            player.group.position.x += targetVx;
+            player.group.position.y += targetVy;
+            player.group.position.z += targetVz;
+
+            // 傾斜視覺角度回饋
+            let targetPitch = inputZ * 0.4;
+            let targetRoll = inputX * 0.4;
+            player.group.rotation.x += (targetPitch - player.group.rotation.x) * 0.1;
+            player.group.rotation.z += (-targetRoll - player.group.rotation.z) * 0.1;
+
+            player.props.forEach(p => p.rotation.y += 1.5);
+
+            if (player.group.position.y < player.radius) {
+                player.group.position.y = player.radius;
+            }
+
+            // 3. 障礙物碰撞偵測
+            let pPos = player.group.position;
+            for(let obs of obstacles) {
+                if (pPos.distanceTo(obs.position) < (player.radius + obs.userData.radius)) {
+                    pPos.z += 0.5; // 彈開
+                    shakeTime = 15;
+                }
+            }
+
+            // 4. 目標框穿越判定
+            if (activeHoop) {
+                let V = pPos.clone().sub(activeHoop.mesh.position);
+                let currentDot = V.dot(activeHoop.normal);
+                let distToPlane = Math.abs(currentDot);
+                let radialDist = V.clone().sub(activeHoop.normal.clone().multiplyScalar(currentDot)).length();
+                
+                if (activeHoop.prevDot !== undefined && (currentDot * activeHoop.prevDot < 0)) {
+                    if (radialDist < activeHoop.radius) {
+                        score++;
+                        triggerFlash();
+                        activeHoop.mesh.material.color.setHex(0xffaa00);
+                        activeHoop.mesh.material.transparent = true;
+                        activeHoop.mesh.material.opacity = 0.5;
+                        ghostHoops.push(activeHoop.mesh);
+                        activeHoop = createHoop();
+                    }
+                }
+                activeHoop.prevDot = currentDot;
+            }
+
+            // 5. AI 無人機邏輯
+            let aiDir = aiTarget.clone().sub(ai.group.position);
+            if (aiDir.length() < 2) {
+                aiTarget.set((Math.random()-0.5)*40, Math.random()*10+5, (Math.random()-0.5)*40);
+            }
+            ai.group.position.add(aiDir.normalize().multiplyScalar(0.06));
+            ai.group.lookAt(aiTarget);
+            ai.props.forEach(p => p.rotation.y += 1.0);
+
+            // 6. 燈光與攝影機跟隨
+            let t = Date.now();
+            player.frontLight.intensity = (Math.sin(t * 0.01) > 0) ? 2 : 0;
+            player.rearLight.intensity = (Math.sin(t * 0.03) > 0) ? 2 : 0;
+            ai.frontLight.intensity = (Math.sin(t * 0.005) > 0) ? 2 : 0;
+
+            let camOffset = new THREE.Vector3(0, 2.5, 6);
+            camOffset.applyMatrix4(new THREE.Matrix4().makeRotationY(player.group.rotation.y));
+            let targetCamPos = player.group.position.clone().add(camOffset);
+            
+            if (shakeTime > 0) {
+                targetCamPos.x += (Math.random() - 0.5) * 1.0;
+                targetCamPos.y += (Math.random() - 0.5) * 1.0;
+                targetCamPos.z += (Math.random() - 0.5) * 1.0;
+                shakeTime--;
+            }
+
+            camera.position.lerp(targetCamPos, 0.1);
+            camera.lookAt(player.group.position);
+        }
+
+        function updateHUD() {
+            if (gameState === "PLAYING") {
+                let passedStr = Math.floor((Date.now() - startTime) / 1000);
+                timeLeft = 180 - passedStr;
+                
+                if (timeLeft <= 0) {
+                    timeLeft = 0;
+                    gameState = "GAMEOVER";
+                    document.getElementById('screen-gameover').style.display = 'flex';
+                    document.getElementById('final-name').innerText = "選手: " + studentName;
+                    document.getElementById('final-score').innerText = "總分: " + score;
+                }
+
+                let min = Math.floor(timeLeft / 60).toString().padStart(2, '0');
+                let sec = (timeLeft % 60).toString().padStart(2, '0');
+                
+                document.getElementById('hud-score').innerText = `得分: ${score}`;
+                document.getElementById('hud-time').innerText = `時間: ${min}:${sec}`;
+                document.getElementById('hud-alt').innerText = `高度: ${player.group.position.y.toFixed(1)}m`;
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            updatePhysics();
+            updateHUD();
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script><canvas width="1094" height="454" style="display: block; width: 1094px; height: 454px;"></canvas>
+
+
+</body></html>
