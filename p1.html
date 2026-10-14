@@ -49,39 +49,89 @@ const ground=new THREE.Mesh(new THREE.PlaneGeometry(100,100),grassMat);ground.ro
 const court=new THREE.Mesh(new THREE.PlaneGeometry(10,12),courtMat);court.rotation.x=-Math.PI/2;court.position.y=0;court.receiveShadow=true;scene.add(court);
 function line(points,color=0xffffff,r=.025){const curve=new THREE.CatmullRomCurve3(points.map(p=>new THREE.Vector3(...p)));const mesh=new THREE.Mesh(new THREE.TubeGeometry(curve,Math.max(20,points.length*4),r,6,false),mat(color,.8));mesh.position.y=.025;scene.add(mesh);return mesh}
 function seg(a,b,r=.025){const g=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(...a),new THREE.Vector3(...b)]);const m=new THREE.Line(g,new THREE.LineBasicMaterial({color:0xffffff}));scene.add(m);return m}
-// court boundary
-seg([-5,.03,-6],[5,.03,-6]);seg([5,.03,-6],[5,.03,6]);seg([5,.03,6],[-5,.03,6]);seg([-5,.03,6],[-5,.03,-6]);
-// Center line and circle
-seg([-5,.03,0],[5,.03,0]);line(Array.from({length:65},(_,i)=>[1.5*Math.cos(i/64*Math.PI*2),.03,1.5*Math.sin(i/64*Math.PI*2)]),0xffffff,.022);
-// Hoop ends: boards on short ends, face toward court
+// Court markings: exact 10m x 12m court, short-end hoops, key and 5m arcs.
+function floorLine(points, radius=.018, color=0xffffff){
+ const curve=new THREE.CatmullRomCurve3(points.map(p=>new THREE.Vector3(p[0],.035,p[1])));
+ const mesh=new THREE.Mesh(new THREE.TubeGeometry(curve,Math.max(24,points.length*3),radius,6,false),mat(color,.82));
+ scene.add(mesh); return mesh;
+}
+function floorSeg(x1,z1,x2,z2,r=.018){
+ return floorLine([[x1,z1],[x2,z2]],r);
+}
+function floorArc(cx,cz,r,start,end,steps=100,radius=.018){
+ const pts=[];
+ for(let i=0;i<=steps;i++){const a=start+(end-start)*i/steps;pts.push([cx+r*Math.cos(a),cz+r*Math.sin(a)]);}
+ return floorLine(pts,radius);
+}
+// Outer boundary and center line
+floorSeg(-5,-6,5,-6); floorSeg(5,-6,5,6);
+floorSeg(5,6,-5,6); floorSeg(-5,6,-5,-6);
+floorSeg(-5,0,5,0);
+floorArc(0,0,1.5,0,Math.PI*2,100,.018);
+
+// Hoop geometry: dir points from the baseline into the playing area.
+// Backboard stays on the baseline; rim, brace and net extend into the court.
 const hoops=[];
 function makeHoop(z,dir){
  const group=new THREE.Group();group.position.set(0,0,z);scene.add(group);
- // support pole behind board
- const pole=new THREE.Mesh(new THREE.CylinderGeometry(.075,.11,3.25,12),poleMat);pole.position.set(0,1.62,dir*.95);pole.castShadow=true;group.add(pole);
- const arm=new THREE.Mesh(new THREE.BoxGeometry(.11,.11,1.2),poleMat);arm.position.set(0,3.0,dir*.42);group.add(arm);
- const board=new THREE.Mesh(new THREE.BoxGeometry(1.8,1.05,.09),boardMat);board.position.set(0,3.15,0);board.castShadow=true;group.add(board);
- // red outer board border as tubes
- function boardRect(w,h,zoff){const pts=[[-w/2,-h/2,zoff],[w/2,-h/2,zoff],[w/2,h/2,zoff],[-w/2,h/2,zoff],[-w/2,-h/2,zoff]].map(([x,y,z])=>[x,y+3.15,z]);const geo=new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts.map(p=>new THREE.Vector3(...p))),40,.025,6,false);const mesh=new THREE.Mesh(geo,rimMat);group.add(mesh)}
- boardRect(1.76,1.01,-.052);
- // target rectangle on backboard
- const targetPts=[[-.3,2.95,0],[.3,2.95,0],[.3,3.38,0],[-.3,3.38,0],[-.3,2.95,0]].map(p=>[p[0],p[1],p[2]]);
- const targetGeo=new THREE.TubeGeometry(new THREE.CatmullRomCurve3(targetPts.map(p=>new THREE.Vector3(...p))),30,.018,6,false);const target=new THREE.Mesh(targetGeo,rimMat);group.add(target);
- // rim horizontal ring, toward court from board
- const ring=new THREE.Mesh(new THREE.TorusGeometry(.23,.025,10,36),rimMat);ring.rotation.x=Math.PI/2;ring.position.set(0,2.75,-dir*.28);ring.castShadow=true;group.add(ring);
- // rim back braces
- const brace=new THREE.Mesh(new THREE.CylinderGeometry(.025,.025,.5,8),poleMat);brace.rotation.x=Math.PI/2;brace.position.set(0,2.95,-dir*.17);group.add(brace);
- // net approximated with fine white hanging cords
- for(let i=0;i<10;i++){const a=i/10*Math.PI*2;const b=new THREE.Vector3(.2*Math.cos(a),2.48,-dir*.28+.2*Math.sin(a));const top=new THREE.Vector3(.23*Math.cos(a),2.75,-dir*.28+.23*Math.sin(a));const cord=new THREE.Mesh(new THREE.CylinderGeometry(.006,.006,b.distanceTo(top),5),mat(0xe9edf4));cord.position.copy(b).add(top).multiplyScalar(.5);cord.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),top.clone().sub(b).normalize());group.add(cord)}
- hoops.push({group,z,dir,board,ring});
- // court paint key/paint area near hoop, 4.0m wide, 2.5m deep
- const near=z-dir*1.25, far=z-dir*4.1;
- seg([-2,.035,near],[2,.035,near]);seg([-2,.035,near],[-2,.035,far]);seg([2,.035,near],[2,.035,far]);
- line(Array.from({length:33},(_,i)=>[2*Math.cos(Math.PI*i/32),.04,far+dir*.0+1.0*Math.sin(Math.PI*i/32)]));
- // free throw semicircle
- line(Array.from({length:41},(_,i)=>[1.8*Math.cos(Math.PI*i/40),.04,far-dir*.0+1.8*Math.sin(Math.PI*i/40)]));
- // 5m 3-point arc, clipped visually by end line
- line(Array.from({length:101},(_,i)=>[5*Math.cos(Math.PI*i/100),.04,z-dir*1.0+5*Math.sin(Math.PI*i/100)]));
+ const inside=dir; // +1 at z=-6, -1 at z=+6
+ const pole=new THREE.Mesh(new THREE.CylinderGeometry(.075,.11,3.25,12),poleMat);
+ pole.position.set(0,1.62,-inside*.95);pole.castShadow=true;group.add(pole);
+ const arm=new THREE.Mesh(new THREE.BoxGeometry(.11,.11,1.2),poleMat);
+ arm.position.set(0,3.0,-inside*.42);group.add(arm);
+
+ const board=new THREE.Mesh(new THREE.BoxGeometry(1.8,1.05,.09),boardMat);
+ board.position.set(0,3.15,0);board.castShadow=true;board.receiveShadow=true;group.add(board);
+ // Red border on the court-facing side of the backboard.
+ function boardRect(w,h,zoff){
+  const pts=[[-w/2,-h/2,zoff],[w/2,-h/2,zoff],[w/2,h/2,zoff],[-w/2,h/2,zoff],[-w/2,-h/2,zoff]]
+   .map(([x,y,zz])=>new THREE.Vector3(x,y+3.15,zz));
+  const mesh=new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts),40,.025,8,false),rimMat);
+  group.add(mesh);
+ }
+ boardRect(1.74,1.00,inside*.052);
+ const targetPts=[[-.30,2.94,inside*.055],[.30,2.94,inside*.055],[.30,3.36,inside*.055],[-.30,3.36,inside*.055],[-.30,2.94,inside*.055]]
+  .map(([x,y,zz])=>new THREE.Vector3(x,y,zz));
+ group.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(targetPts),32,.018,8,false),rimMat));
+
+ // Regulation-style horizontal rim, 0.28m in front of board into the court.
+ const rimZ=inside*.28;
+ const ring=new THREE.Mesh(new THREE.TorusGeometry(.23,.025,12,48),rimMat);
+ ring.rotation.x=Math.PI/2;ring.position.set(0,2.75,rimZ);ring.castShadow=true;group.add(ring);
+ const brace=new THREE.Mesh(new THREE.CylinderGeometry(.025,.025,.5,8),poleMat);
+ brace.rotation.x=Math.PI/2;brace.position.set(0,2.96,inside*.16);group.add(brace);
+
+ // Simple white net hanging below the rim.
+ for(let i=0;i<12;i++){
+  const a=i/12*Math.PI*2;
+  const top=new THREE.Vector3(.205*Math.cos(a),2.72,rimZ+.205*Math.sin(a));
+  const bottom=new THREE.Vector3(.135*Math.cos(a),2.43,rimZ+inside*.02+.135*Math.sin(a));
+  const cord=new THREE.Mesh(new THREE.CylinderGeometry(.006,.006,top.distanceTo(bottom),5),mat(0xf0f3f8));
+  cord.position.copy(top).add(bottom).multiplyScalar(.5);
+  cord.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),bottom.clone().sub(top).normalize());
+  group.add(cord);
+ }
+ hoops.push({group,z,dir,board,ring,rimZ});
+
+ // Key / painted lane: 4m wide, from 1m off baseline to the free-throw line 4.6m in.
+ const laneStart=z+inside*1.0;
+ const ftZ=z+inside*4.6;
+ floorSeg(-2,laneStart,2,laneStart);
+ floorSeg(-2,laneStart,-2,ftZ);
+ floorSeg(2,laneStart,2,ftZ);
+ floorSeg(-2,ftZ,2,ftZ);
+ // Free-throw circle centered on the free-throw line, radius 1.8m.
+ floorArc(0,ftZ,1.8,0,Math.PI*2,100,.018);
+ // 5m-radius three-point arc, centered on the rim position and opening into the court.
+ // Clip its ends where it meets the sidelines (x = +/- 5).
+ const arcRadius=5.0, rimCenterZ=z+inside*.28;
+ const endAngle=Math.acos(5/arcRadius); // 0 at side-line intersection in x; use the inner-facing semicircle below
+ const arcPts=[];
+ for(let i=0;i<=120;i++){
+  const t=Math.PI*i/120;
+  arcPts.push([arcRadius*Math.cos(t),rimCenterZ+inside*arcRadius*Math.sin(t)]);
+ }
+ floorLine(arcPts,.018);
 }
 makeHoop(-6,1);makeHoop(6,-1);
 
@@ -151,7 +201,7 @@ function shoot(){
  const mesh=held.mesh;mesh.material=basketballMat;mesh.scale.setScalar(1);mesh.position.copy(start);held.active=false;held=null;
  projectile={mesh,vel:dir.multiplyScalar(10.8).add(new THREE.Vector3(0,3.2,0)),life:0,scored:false};tracking=true;remaining--;updateHUD();say('投出！');
 }
-function hoopScore(pos){for(const h of hoops){const rimWorld=new THREE.Vector3(0,2.75,h.z-h.dir*.28);if(pos.distanceTo(rimWorld)<.31&&projectile&&projectile.vel.y<0&&!projectile.scored){projectile.scored=true;score++;updateHUD();h.board.material.emissive.setHex(0xffc400);h.board.material.emissiveIntensity=2;setTimeout(()=>{h.board.material.emissive.setHex(0x111111);h.board.material.emissiveIntensity=1},350);say('進球！+1');return true}}return false}
+function hoopScore(pos){for(const h of hoops){const rimWorld=new THREE.Vector3(0,2.75,h.z+h.dir*.28);if(pos.distanceTo(rimWorld)<.31&&projectile&&projectile.vel.y<0&&!projectile.scored){projectile.scored=true;score++;updateHUD();h.board.material.emissive.setHex(0xffc400);h.board.material.emissiveIntensity=2;setTimeout(()=>{h.board.material.emissive.setHex(0x111111);h.board.material.emissiveIntensity=1},350);say('進球！+1');return true}}return false}
 function movePlayer(dt){
  if(mode!=='mouse'||!running||projectile)return;
  const f=forward(),right=new THREE.Vector3(Math.cos(player.yaw),0,-Math.sin(player.yaw));
