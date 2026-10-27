@@ -1,1015 +1,131 @@
-<!DOCTYPE html>
-<html lang="zh-TW">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <title>3D 籃球大挑戰 - 一甲國小版</title>
-  <!-- Tailwind CSS for UI Layout -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Three.js Library -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-  <style>
-    body, html {
-      margin: 0;
-      padding: 0;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-      background-color: #000000;
-      font-family: 'Inter', system-ui, -apple-system, sans-serif;
-      user-select: none;
-      -webkit-user-select: none;
-      touch-action: none;
-    }
+#canvas-container {
+  width: 100vw;
+  height: 100vh;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+}
 
-    #canvas-container {
-      width: 100vw;
-      height: 100vh;
-      position: absolute;
-      top: 0;
-      left: 0;
-      z-index: 1;
-    }
+/* Reticle UI */
+.reticle-container {
+  position: absolute;
+  top: 40%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 10;
+}
 
-    /* Reticle UI */
-    .reticle-container {
-      position: absolute;
-      top: 40%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      pointer-events: none;
-      z-index: 10;
-    }
+.reticle-circle {
+  width: 100px;
+  height: 100px;
+  border: 3px solid rgba(239, 68, 68, 0.85);
+  border-radius: 50%;
+  position: relative;
+  box-shadow: 0 0 15px rgba(239, 68, 68, 0.5), inset 0 0 10px rgba(239, 68, 68, 0.3);
+  animation: pulse-border 2s infinite ease-in-out;
+}
 
-    .reticle-circle {
-      width: 100px;
-      height: 100px;
-      border: 3px solid rgba(239, 68, 68, 0.85);
-      border-radius: 50%;
-      position: relative;
-      box-shadow: 0 0 15px rgba(239, 68, 68, 0.5), inset 0 0 10px rgba(239, 68, 68, 0.3);
-      animation: pulse-border 2s infinite ease-in-out;
-    }
+.reticle-cross-h {
+  position: absolute;
+  top: 50%;
+  left: 15%;
+  width: 70%;
+  height: 2px;
+  background-color: rgba(239, 68, 68, 0.9);
+  transform: translateY(-50%);
+}
 
-    .reticle-cross-h {
-      position: absolute;
-      top: 50%;
-      left: 15%;
-      width: 70%;
-      height: 2px;
-      background-color: rgba(239, 68, 68, 0.9);
-      transform: translateY(-50%);
-    }
+.reticle-cross-v {
+  position: absolute;
+  left: 50%;
+  top: 15%;
+  height: 70%;
+  width: 2px;
+  background-color: rgba(239, 68, 68, 0.9);
+  transform: translateX(-50%);
+}
 
-    .reticle-cross-v {
-      position: absolute;
-      left: 50%;
-      top: 15%;
-      height: 70%;
-      width: 2px;
-      background-color: rgba(239, 68, 68, 0.9);
-      transform: translateX(-50%);
-    }
+.reticle-dot {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  background-color: #ef4444;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 8px #ef4444;
+}
 
-    .reticle-dot {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      width: 8px;
-      height: 8px;
-      background-color: #ef4444;
-      border-radius: 50%;
-      transform: translate(-50%, -50%);
-      box-shadow: 0 0 8px #ef4444;
-    }
+@keyframes pulse-border {
+  0%, 100% { transform: scale(1); opacity: 0.85; }
+  50% { transform: scale(1.05); opacity: 1; }
+}
 
-    @keyframes pulse-border {
-      0%, 100% { transform: scale(1); opacity: 0.85; }
-      50% { transform: scale(1.05); opacity: 1; }
-    }
+/* Modal Backdrop Blur */
+.modal-backdrop {
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
 
-    /* Modal Backdrop Blur */
-    .modal-backdrop {
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
-    }
-  </style>
-</head>
-<body class="bg-black text-white select-none">
 
-  <!-- 3D Canvas Container -->
-  <div id="canvas-container"></div>
-
-  <!-- HUD Overlay -->
-  <div id="hud" class="hidden absolute top-0 left-0 w-full p-4 md:p-6 flex justify-between items-start pointer-events-none z-20">
-    <div class="bg-slate-900/80 border border-slate-700/60 rounded-2xl px-5 py-3 shadow-lg backdrop-blur-md">
-      <div class="text-xs text-slate-400 font-medium">玩家選手</div>
-      <div id="hud-player-name" class="text-lg md:text-xl font-bold text-amber-400">一甲國小練習生</div>
-    </div>
-
-    <div class="flex gap-3">
-      <div class="bg-slate-900/80 border border-slate-700/60 rounded-2xl px-5 py-3 shadow-lg backdrop-blur-md text-center">
-        <div class="text-xs text-slate-400 font-medium">剩餘時間</div>
-        <div id="hud-timer" class="text-xl md:text-2xl font-black text-emerald-400 font-mono">03:00</div>
-      </div>
-      
-      <div class="bg-slate-900/80 border border-slate-700/60 rounded-2xl px-5 py-3 shadow-lg backdrop-blur-md text-center">
-        <div class="text-xs text-slate-400 font-medium">剩餘籃球</div>
-        <div id="hud-balls" class="text-xl md:text-2xl font-black text-blue-400 font-mono">30 / 30</div>
-      </div>
-
-      <div class="bg-slate-900/80 border border-slate-700/60 rounded-2xl px-5 py-3 shadow-lg backdrop-blur-md text-center min-w-[90px]">
-        <div class="text-xs text-slate-400 font-medium">總得分</div>
-        <div id="hud-score" class="text-2xl md:text-3xl font-black text-amber-400 font-mono">0</div>
-      </div>
-    </div>
+<div class="flex gap-3">
+  <div class="bg-slate-900/80 border border-slate-700/60 rounded-2xl px-5 py-3 shadow-lg backdrop-blur-md text-center">
+    <div class="text-xs text-slate-400 font-medium">剩餘時間</div>
+    <div id="hud-timer" class="text-xl md:text-2xl font-black text-emerald-400 font-mono">03:00</div>
+  </div>
+  
+  <div class="bg-slate-900/80 border border-slate-700/60 rounded-2xl px-5 py-3 shadow-lg backdrop-blur-md text-center">
+    <div class="text-xs text-slate-400 font-medium">剩餘籃球</div>
+    <div id="hud-balls" class="text-xl md:text-2xl font-black text-blue-400 font-mono">30 / 30</div>
   </div>
 
-  <!-- Central Aiming Reticle Circle (HUD) -->
-  <div id="reticle" class="reticle-container hidden">
-    <div class="reticle-circle">
-      <div class="reticle-cross-h"></div>
-      <div class="reticle-cross-v"></div>
-      <div class="reticle-dot"></div>
-    </div>
-    <div id="reticle-hint" class="text-xs text-center mt-2 font-bold tracking-wider text-amber-300 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
-      靠近或對準籃球即可自動撿起
-    </div>
+  <div class="bg-slate-900/80 border border-slate-700/60 rounded-2xl px-5 py-3 shadow-lg backdrop-blur-md text-center min-w-[90px]">
+    <div class="text-xs text-slate-400 font-medium">總得分</div>
+    <div id="hud-score" class="text-2xl md:text-3xl font-black text-amber-400 font-mono">0</div>
+  </div>
+</div>
+
+
+  <div class="w-16 h-16 bg-gradient-to-tr from-amber-500 to-orange-600 rounded-2xl mx-auto flex items-center justify-center shadow-lg shadow-orange-500/30 mb-4">
+    <svg class="w-10 h-10 text-white" fill="currentColor" viewBox="0 0 24 24">
+      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+    </svg>
   </div>
 
-  <!-- Floating Shooting Indicator Notice -->
-  <div id="shoot-prompt" class="hidden fixed bottom-12 left-1/2 -translate-x-1/2 z-20 bg-amber-500/90 text-slate-950 px-6 py-2.5 rounded-full font-black text-base shadow-xl animate-bounce border-2 border-white/50">
-    <span id="prompt-text">向上揮動手機或按下 [空白鍵] 投籃！</span>
+  <h1 class="text-2xl md:text-3xl font-black text-white mb-2 tracking-wide">3D 籃球大挑戰</h1>
+  <p class="text-slate-400 text-sm mb-6">請輸入選手姓名並點擊開始遊戲</p>
+
+  <div class="mb-6 text-left">
+    <label for="player-name-input" class="block text-xs font-semibold text-slate-400 mb-2 uppercase tracking-wider">選手姓名</label>
+    <input type="text" id="player-name-input" value="一甲國小練習生" maxlength="12" class="w-full bg-slate-800/90 border border-slate-700 rounded-xl px-4 py-3 text-white font-bold text-lg focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition" />
   </div>
 
-  <!-- Goal Toast Notification -->
-  <div id="score-toast" class="hidden fixed top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 pointer-events-none transition-all transform scale-50 opacity-0 duration-300">
-    <div class="bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 font-black text-4xl md:text-6xl px-10 py-4 rounded-3xl shadow-[0_0_50px_rgba(251,191,36,0.8)] border-4 border-white tracking-widest text-center">
-      <span id="score-toast-text">+3分 三分球進！</span>
-    </div>
+  <button id="btn-start" class="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 active:scale-[0.98] text-slate-950 font-black text-lg py-4 rounded-xl shadow-lg shadow-orange-500/30 transition duration-150 flex items-center justify-center gap-2">
+    <span>開始遊戲</span>
+    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+    </svg>
+  </button>
+
+  <div class="mt-4 text-xs text-slate-500">
+    行動裝置支援陀螺儀體感操控 | PC 使用滑鼠與空白鍵
+  </div>
+</div>
+
+
+  <h2 class="text-2xl font-black text-white mb-1">挑戰結束！</h2>
+  <p id="result-player-name" class="text-amber-400 font-bold text-lg mb-4">一甲國小練習生</p>
+
+  <div class="bg-slate-800/80 border border-slate-700/60 rounded-2xl p-6 mb-6">
+    <div class="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-1">最終得分</div>
+    <div id="result-final-score" class="text-5xl font-black text-amber-400 font-mono tracking-tight">0</div>
+    <div id="result-detail" class="text-xs text-slate-400 mt-3 font-medium">共投出 30 顆球</div>
   </div>
 
-  <!-- Start Game Modal (Name Entry & Authorization) -->
-  <div id="start-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop bg-black/80">
-    <div class="bg-slate-900 border border-slate-700/80 rounded-3xl p-6 md:p-8 max-w-md w-full shadow-2xl text-center relative overflow-hidden">
-      <div class="absolute -top-12 -left-12 w-32 h-32 bg-amber-500/10 rounded-full blur-2xl"></div>
-      <div class="absolute -bottom-12 -right-12 w-32 h-32 bg-blue-500/10 rounded-full blur-2xl"></div>
-      
-      <div class="w-16 h-16 bg-gradient-to-tr from-amber-500 to-orange-600 rounded-2xl mx-auto flex items-center justify-center shadow-lg shadow-orange-500/30 mb-4">
-        <svg class="w-10 h-10 text-white" fill="currentColor" viewBox="0 0 24 24">
-          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
-        </svg>
-      </div>
-
-      <h1 class="text-2xl md:text-3xl font-black text-white mb-2 tracking-wide">3D 籃球大挑戰</h1>
-      <p class="text-slate-400 text-sm mb-6">請輸入選手姓名並點擊開始遊戲</p>
-
-      <div class="mb-6 text-left">
-        <label for="player-name-input" class="block text-xs font-semibold text-slate-400 mb-2 uppercase tracking-wider">選手姓名</label>
-        <input type="text" id="player-name-input" value="一甲國小練習生" maxlength="12" class="w-full bg-slate-800/90 border border-slate-700 rounded-xl px-4 py-3 text-white font-bold text-lg focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition" />
-      </div>
-
-      <button id="btn-start" class="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 active:scale-[0.98] text-slate-950 font-black text-lg py-4 rounded-xl shadow-lg shadow-orange-500/30 transition duration-150 flex items-center justify-center gap-2">
-        <span>開始遊戲</span>
-        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
-        </svg>
-      </button>
-
-      <div class="mt-4 text-xs text-slate-500">
-        行動裝置支援陀螺儀體感操控 | PC 使用滑鼠與空白鍵
-      </div>
-    </div>
-  </div>
-
-  <!-- Game Over Result Modal -->
-  <div id="result-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop bg-black/85">
-    <div class="bg-slate-900 border border-slate-700/80 rounded-3xl p-6 md:p-8 max-w-md w-full shadow-2xl text-center relative overflow-hidden">
-      <div class="w-20 h-20 bg-gradient-to-tr from-yellow-400 to-amber-500 rounded-3xl mx-auto flex items-center justify-center shadow-xl shadow-amber-500/20 mb-4 animate-bounce">
-        <span class="text-4xl">🏆</span>
-      </div>
-
-      <h2 class="text-2xl font-black text-white mb-1">挑戰結束！</h2>
-      <p id="result-player-name" class="text-amber-400 font-bold text-lg mb-4">一甲國小練習生</p>
-
-      <div class="bg-slate-800/80 border border-slate-700/60 rounded-2xl p-6 mb-6">
-        <div class="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-1">最終得分</div>
-        <div id="result-final-score" class="text-5xl font-black text-amber-400 font-mono tracking-tight">0</div>
-        <div id="result-detail" class="text-xs text-slate-400 mt-3 font-medium">共投出 30 顆球</div>
-      </div>
-
-      <button id="btn-restart" class="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 active:scale-[0.98] text-slate-950 font-black text-lg py-4 rounded-xl shadow-lg shadow-emerald-500/30 transition duration-150">
-        重新開始
-      </button>
-    </div>
-  </div>
-
-  <!-- Game Logic Script -->
-  <script>
-    /**
-     * 3D Basketball Game Core Architecture
-     * Simplified Intuitive Pickup Mechanism + Dynamic Shooting & Physics
-     */
-
-    // --- Global Configuration & Constants ---
-    const COURT_WIDTH = 10;     // 10 meters
-    const COURT_LENGTH = 12;    // 12 meters
-    const HALF_COURT_LEN = 6;
-    const HOOP_HEIGHT = 2.5;    // 2.5 meters high
-    const HOOP_Z = -5.8;        // Near back boundary
-    const THREE_POINT_RADIUS = 5.0; // 5 meters arc
-    const MAX_BALLS = 30;
-    const TOTAL_TIME = 180;     // 3 minutes (180s)
-    const PICKUP_RADIUS_DIRECT = 2.5; // Direct distance threshold to pickup (2.5 meters)
-    const PICKUP_RADIUS_AIM = 4.5;    // Aim distance threshold (4.5 meters)
-
-    // --- State Variables ---
-    let playerName = "一甲國小練習生";
-    let score = 0;
-    let ballsRemaining = MAX_BALLS;
-    let timerSeconds = TOTAL_TIME;
-    let timerInterval = null;
-    let isGameActive = false;
-    let isMobile = false;
-    let isHoldingBall = false;
-    let isShooting = false;
-
-    // Camera & Controls State
-    let cameraYaw = 0;         // Horizontal angle (radians)
-    let cameraPitch = 0;       // Vertical angle (radians)
-    let isMouseDown = false;
-    let previousMousePosition = { x: 0, y: 0 };
-    let playerPosition = new THREE.Vector3(0, 1.6, 3.5); // Initial player standing point
-
-    // Device Gyroscope Variables
-    let rawAlpha = 0, rawBeta = 0, rawGamma = 0;
-    let initialAlpha = null;
-    let lastBeta = 0;
-
-    // Three.js Core Setup
-    let scene, camera, renderer;
-    let backboardMesh, rimMesh, rimCenterPos;
-    let basketballs = [];      // Array of active ground basketball objects
-    let activeShotBall = null;  // Currently flying basketball physics object
-    let heldBallMesh = null;    // Translucent ball visible while targeting/holding
-
-    // Dynamic Follow Camera State
-    let cameraMode = 'PLAYER'; // 'PLAYER' or 'FOLLOW_BALL'
-
-    // Visual Flash Material Reference
-    let backboardMaterial;
-
-    // --- Window Initialization ---
-    window.onload = function() {
-      detectDevice();
-      initThreeScene();
-      setupEventListeners();
-      animate();
-    };
-
-    // --- Device Detection ---
-    function detectDevice() {
-      isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || 
-                 (navigator.maxTouchPoints && navigator.maxTouchPoints > 2);
-    }
-
-    // --- Three.js Scene Setup ---
-    function initThreeScene() {
-      const container = document.getElementById('canvas-container');
-
-      // Create Scene
-      scene = new THREE.Scene();
-      scene.background = new THREE.Color(0x000000); // Black Night Sky
-      scene.fog = new THREE.FogExp2(0x000000, 0.025);
-
-      // Create Camera
-      camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 100);
-      camera.position.copy(playerPosition);
-
-      // Create Renderer
-      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
-      renderer.setSize(window.innerWidth, window.innerHeight);
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-      renderer.shadowMap.enabled = true;
-      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-      renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      renderer.toneMappingExposure = 1.1;
-      container.appendChild(renderer.domElement);
-
-      // Add Lighting
-      const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-      scene.add(ambientLight);
-
-      // Directional Stadium Spotlight
-      const dirLight = new THREE.DirectionalLight(0xfff5ea, 1.2);
-      dirLight.position.set(10, 18, 10);
-      dirLight.castShadow = true;
-      dirLight.shadow.mapSize.width = 2048;
-      dirLight.shadow.mapSize.height = 2048;
-      dirLight.shadow.camera.near = 0.5;
-      dirLight.shadow.camera.far = 40;
-      dirLight.shadow.camera.left = -10;
-      dirLight.shadow.camera.right = 10;
-      dirLight.shadow.camera.top = 10;
-      dirLight.shadow.camera.bottom = -10;
-      scene.add(dirLight);
-
-      // Warm Rim Spotlight
-      const rimLight = new THREE.PointLight(0xff8833, 1.5, 12);
-      rimLight.position.set(0, HOOP_HEIGHT + 1, HOOP_Z + 1);
-      scene.add(rimLight);
-
-      // Build Court Surroundings & Hoops
-      buildEnvironment();
-      buildBasketballHoops();
-      createHeldBallUI();
-
-      // Window Resize Listener
-      window.addEventListener('resize', onWindowResize, false);
-    }
-
-    // --- Environment & Court Builder ---
-    function buildEnvironment() {
-      // 1. Extended Deep Green Grass Floor
-      const grassGeo = new THREE.PlaneGeometry(80, 80);
-      const grassMat = new THREE.MeshStandardMaterial({ color: 0x0a290e, roughness: 0.9, metalness: 0.1 });
-      const grassMesh = new THREE.Mesh(grassGeo, grassMat);
-      grassMesh.rotation.x = -Math.PI / 2;
-      grassMesh.position.y = -0.01;
-      grassMesh.receiveShadow = true;
-      scene.add(grassMesh);
-
-      // 2. Main Court Surface (10m x 12m, Deep Navy Blue `#030f26`)
-      const courtGeo = new THREE.PlaneGeometry(COURT_WIDTH, COURT_LENGTH);
-      const courtMat = new THREE.MeshStandardMaterial({ color: 0x030f26, roughness: 0.4, metalness: 0.2 });
-      const courtMesh = new THREE.Mesh(courtGeo, courtMat);
-      courtMesh.rotation.x = -Math.PI / 2;
-      courtMesh.position.set(0, 0, 0);
-      courtMesh.receiveShadow = true;
-      scene.add(courtMesh);
-
-      // 3. Crisp White Court Lines (Canvas Texture)
-      const lineTexture = createCourtLinesTexture();
-      const lineGeo = new THREE.PlaneGeometry(COURT_WIDTH, COURT_LENGTH);
-      const lineMat = new THREE.MeshBasicMaterial({ map: lineTexture, transparent: true, opacity: 0.9 });
-      const lineMesh = new THREE.Mesh(lineGeo, lineMat);
-      lineMesh.rotation.x = -Math.PI / 2;
-      lineMesh.position.set(0, 0.005, 0);
-      scene.add(lineMesh);
-    }
-
-    // Draw Canvas Texture for Standard Court Lines
-    function createCourtLinesTexture() {
-      const canvas = document.createElement('canvas');
-      canvas.width = 1024;
-      canvas.height = 1228;
-      const ctx = canvas.getContext('2d');
-
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 12;
-
-      // Outer Boundary Line
-      const pad = 24;
-      ctx.strokeRect(pad, pad, canvas.width - pad * 2, canvas.height - pad * 2);
-
-      // Center Line & Center Circle
-      ctx.beginPath();
-      ctx.moveTo(pad, canvas.height / 2);
-      ctx.lineTo(canvas.width - pad * 2, canvas.height / 2);
-      ctx.stroke();
-
-      ctx.beginPath();
-      ctx.arc(canvas.width / 2, canvas.height / 2, 120, 0, Math.PI * 2);
-      ctx.stroke();
-
-      // Front Hoop 3-Point Line (Radius 5m relative to 10x12m court)
-      const scaleX = canvas.width / COURT_WIDTH;
-      const scaleY = canvas.height / COURT_LENGTH;
-      const hoopZCanvas = (HOOP_Z + HALF_COURT_LEN) * scaleY;
-      const radiusCanvas = THREE_POINT_RADIUS * scaleX;
-
-      ctx.beginPath();
-      ctx.arc(canvas.width / 2, hoopZCanvas, radiusCanvas, 0, Math.PI, false);
-      ctx.stroke();
-
-      // Key / Free Throw Area (Front Hoop)
-      const keyWidth = 3.6 * scaleX;
-      const keyHeight = 4.2 * scaleY;
-      ctx.strokeRect((canvas.width - keyWidth) / 2, hoopZCanvas, keyWidth, keyHeight);
-
-      // Key Free Throw Circle
-      ctx.beginPath();
-      ctx.arc(canvas.width / 2, hoopZCanvas + keyHeight, keyWidth / 2, 0, Math.PI);
-      ctx.stroke();
-
-      // Back Hoop 3-Point Line & Key (Symmetric)
-      const backHoopZCanvas = (-HOOP_Z + HALF_COURT_LEN) * scaleY;
-      ctx.beginPath();
-      ctx.arc(canvas.width / 2, backHoopZCanvas, radiusCanvas, Math.PI, 0, false);
-      ctx.stroke();
-
-      ctx.strokeRect((canvas.width - keyWidth) / 2, backHoopZCanvas - keyHeight, keyWidth, keyHeight);
-
-      const texture = new THREE.CanvasTexture(canvas);
-      texture.anisotropy = 8;
-      return texture;
-    }
-
-    // --- Hoop & Backboard Builder ---
-    function buildBasketballHoops() {
-      // Create North Hoop (Active Targeting Hoop)
-      createSingleHoop(HOOP_Z, 0);
-      // Create South Hoop (Visual Background Detail)
-      createSingleHoop(-HOOP_Z, Math.PI);
-    }
-
-    function createSingleHoop(zPos, rotationY) {
-      const hoopGroup = new THREE.Group();
-      hoopGroup.position.set(0, 0, zPos);
-      hoopGroup.rotation.y = rotationY;
-
-      // Support Post
-      const postGeo = new THREE.CylinderGeometry(0.1, 0.12, 3.6, 16);
-      const postMat = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.8, roughness: 0.3 });
-      const postMesh = new THREE.Mesh(postGeo, postMat);
-      postMesh.position.set(0, 1.8, -0.6);
-      postMesh.castShadow = true;
-      hoopGroup.add(postMesh);
-
-      const armGeo = new THREE.BoxGeometry(0.12, 0.12, 0.8);
-      const armMesh = new THREE.Mesh(armGeo, postMat);
-      armMesh.position.set(0, HOOP_HEIGHT + 0.3, -0.2);
-      hoopGroup.add(armMesh);
-
-      // Backboard
-      const bbGeo = new THREE.BoxGeometry(1.8, 1.05, 0.05);
-      backboardMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2 });
-      const bbMesh = new THREE.Mesh(bbGeo, backboardMaterial);
-      bbMesh.position.set(0, HOOP_HEIGHT + 0.35, 0);
-      bbMesh.castShadow = true;
-      hoopGroup.add(bbMesh);
-
-      if (zPos === HOOP_Z) {
-        backboardMesh = bbMesh;
-      }
-
-      // Red Frame & Target
-      const canvas = document.createElement('canvas');
-      canvas.width = 512;
-      canvas.height = 300;
-      const ctx = canvas.getContext('2d');
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, 512, 300);
-      ctx.strokeStyle = '#dc2626';
-      ctx.lineWidth = 24;
-      ctx.strokeRect(0, 0, 512, 300);
-      ctx.lineWidth = 16;
-      ctx.strokeRect(176, 140, 160, 110);
-
-      const bbTexture = new THREE.CanvasTexture(canvas);
-      const bbFrontMat = new THREE.MeshBasicMaterial({ map: bbTexture });
-      const bbFrontGeo = new THREE.PlaneGeometry(1.78, 1.03);
-      const bbFrontMesh = new THREE.Mesh(bbFrontGeo, bbFrontMat);
-      bbFrontMesh.position.set(0, HOOP_HEIGHT + 0.35, 0.027);
-      hoopGroup.add(bbFrontMesh);
-
-      // Orange-Red Metallic Rim
-      const rimRadius = 0.32;
-      const rimGeo = new THREE.TorusGeometry(rimRadius, 0.025, 16, 32);
-      const rimMat = new THREE.MeshStandardMaterial({ color: 0xea580c, metalness: 0.9, roughness: 0.2 });
-      const rimMeshLocal = new THREE.Mesh(rimGeo, rimMat);
-      rimMeshLocal.rotation.x = Math.PI / 2;
-      rimMeshLocal.position.set(0, HOOP_HEIGHT, 0.35);
-      rimMeshLocal.castShadow = true;
-      hoopGroup.add(rimMeshLocal);
-
-      if (zPos === HOOP_Z) {
-        rimMesh = rimMeshLocal;
-        rimCenterPos = new THREE.Vector3(0, HOOP_HEIGHT, HOOP_Z + 0.35);
-      }
-
-      // Net Mesh
-      const netGeo = new THREE.ConeGeometry(rimRadius, 0.5, 16, 1, true);
-      const netMat = new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true, transparent: true, opacity: 0.75 });
-      const netMesh = new THREE.Mesh(netGeo, netMat);
-      netMesh.position.set(0, HOOP_HEIGHT - 0.25, 0.35);
-      hoopGroup.add(netMesh);
-
-      scene.add(hoopGroup);
-    }
-
-    // --- Procedural Basketball Mesh Generator ---
-    function createBasketballMesh(radius = 0.22) {
-      const geo = new THREE.SphereGeometry(radius, 32, 32);
-      const canvas = document.createElement('canvas');
-      canvas.width = 512;
-      canvas.height = 256;
-      const ctx = canvas.getContext('2d');
-
-      ctx.fillStyle = '#d97706';
-      ctx.fillRect(0, 0, 512, 256);
-      ctx.strokeStyle = '#18181b';
-      ctx.lineWidth = 8;
-
-      ctx.beginPath();
-      ctx.moveTo(0, 128);
-      ctx.lineTo(512, 128);
-      ctx.stroke();
-
-      ctx.beginPath();
-      ctx.moveTo(256, 0);
-      ctx.lineTo(256, 256);
-      ctx.stroke();
-
-      ctx.beginPath();
-      ctx.arc(128, 128, 90, 0, Math.PI * 2);
-      ctx.stroke();
-
-      ctx.beginPath();
-      ctx.arc(384, 128, 90, 0, Math.PI * 2);
-      ctx.stroke();
-
-      const texture = new THREE.CanvasTexture(canvas);
-      const mat = new THREE.MeshStandardMaterial({
-        map: texture,
-        roughness: 0.6,
-        metalness: 0.1
-      });
-
-      const mesh = new THREE.Mesh(geo, mat);
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      return mesh;
-    }
-
-    // --- Held Ball UI Mesh (Semi-Transparent Reticle Ball) ---
-    function createHeldBallUI() {
-      heldBallMesh = createBasketballMesh(0.20);
-      heldBallMesh.material = heldBallMesh.material.clone();
-      heldBallMesh.material.transparent = true;
-      heldBallMesh.material.opacity = 0.55;
-      heldBallMesh.visible = false;
-      scene.add(heldBallMesh);
-    }
-
-    // --- Basketball Spawning Mechanics ---
-    function spawnGroundBasketballs() {
-      basketballs.forEach(b => scene.remove(b.mesh));
-      basketballs = [];
-
-      // Randomly scatter 30 basketballs within easy pickup range
-      for (let i = 0; i < MAX_BALLS; i++) {
-        const ballMesh = createBasketballMesh(0.22);
-        const rx = (Math.random() - 0.5) * 8.0;
-        const rz = (Math.random() - 0.5) * 7.0 + 0.5;
-
-        ballMesh.position.set(rx, 0.22, rz);
-        scene.add(ballMesh);
-
-        basketballs.push({
-          mesh: ballMesh,
-          id: i,
-          isCollected: false
-        });
-      }
-    }
-
-    // --- User Authorization & Event Listeners ---
-    function setupEventListeners() {
-      const btnStart = document.getElementById('btn-start');
-      const btnRestart = document.getElementById('btn-restart');
-      const nameInput = document.getElementById('player-name-input');
-
-      btnStart.addEventListener('click', async () => {
-        playerName = nameInput.value.trim() || "一甲國小練習生";
-        document.getElementById('hud-player-name').innerText = playerName;
-
-        if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-          try {
-            await DeviceOrientationEvent.requestPermission();
-            if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
-              await DeviceMotionEvent.requestPermission();
-            }
-          } catch (e) {
-            console.warn("Gyroscope permission declined or unavailable:", e);
-          }
-        }
-
-        if (isMobile) {
-          window.addEventListener('deviceorientation', handleGyroscopeOrientation, true);
-          window.addEventListener('devicemotion', handleMotionGesture, true);
-        }
-
-        document.getElementById('start-modal').classList.add('hidden');
-        startGame();
-      });
-
-      btnRestart.addEventListener('click', () => {
-        document.getElementById('result-modal').classList.add('hidden');
-        startGame();
-      });
-
-      window.addEventListener('mousedown', (e) => {
-        if (!isGameActive || isMobile) return;
-        isMouseDown = true;
-        previousMousePosition = { x: e.clientX, y: e.clientY };
-      });
-
-      window.addEventListener('mousemove', (e) => {
-        if (!isGameActive || !isMouseDown || isMobile) return;
-        const deltaX = e.clientX - previousMousePosition.x;
-        const deltaY = e.clientY - previousMousePosition.y;
-
-        cameraYaw -= deltaX * 0.0035;
-        cameraPitch -= deltaY * 0.003;
-        cameraPitch = Math.max(-Math.PI / 3, Math.min(Math.PI / 3, cameraPitch));
-        previousMousePosition = { x: e.clientX, y: e.clientY };
-      });
-
-      window.addEventListener('mouseup', () => { isMouseDown = false; });
-
-      window.addEventListener('keydown', (e) => {
-        if (!isGameActive) return;
-        if (e.code === 'Space') {
-          e.preventDefault();
-          if (isHoldingBall && !isShooting) {
-            shootBasketball();
-          }
-        }
-      });
-    }
-
-    // --- Gyroscope Orientation Logic ---
-    function handleGyroscopeOrientation(event) {
-      if (!isGameActive) return;
-
-      const alpha = event.alpha ? THREE.MathUtils.degToRad(event.alpha) : 0;
-      const beta = event.beta ? THREE.MathUtils.degToRad(event.beta) : 0;
-
-      if (initialAlpha === null && event.alpha !== null) {
-        initialAlpha = alpha;
-      }
-
-      if (initialAlpha !== null) {
-        cameraYaw = (alpha - initialAlpha);
-      }
-
-      cameraPitch = beta - Math.PI / 4; 
-      cameraPitch = Math.max(-Math.PI / 3.2, Math.min(Math.PI / 3.2, cameraPitch));
-
-      const currentBeta = event.beta || 0;
-      const betaDelta = currentBeta - lastBeta;
-      lastBeta = currentBeta;
-
-      if (isHoldingBall && !isShooting && betaDelta > 14) {
-        shootBasketball();
-      }
-    }
-
-    // --- Motion Acceleration Shooting Trigger ---
-    function handleMotionGesture(event) {
-      if (!isGameActive || !isHoldingBall || isShooting) return;
-
-      const acc = event.accelerationIncludingGravity || event.acceleration;
-      if (!acc) return;
-
-      const accMagnitude = Math.sqrt((acc.x || 0)**2 + (acc.y || 0)**2 + (acc.z || 0)**2);
-
-      if (accMagnitude > 22.0) {
-        shootBasketball();
-      }
-    }
-
-    // --- Start / Reset Game Session ---
-    function startGame() {
-      score = 0;
-      ballsRemaining = MAX_BALLS;
-      timerSeconds = TOTAL_TIME;
-      isGameActive = true;
-      isHoldingBall = false;
-      isShooting = false;
-      cameraMode = 'PLAYER';
-
-      playerPosition.set(0, 1.6, 4.0);
-      cameraYaw = 0;
-      cameraPitch = 0;
-
-      document.getElementById('hud').classList.remove('hidden');
-      document.getElementById('reticle').classList.remove('hidden');
-      document.getElementById('hud-score').innerText = score;
-      document.getElementById('hud-balls').innerText = `${ballsRemaining} / ${MAX_BALLS}`;
-      updateTimerDisplay();
-
-      if (activeShotBall) {
-        scene.remove(activeShotBall.mesh);
-        activeShotBall = null;
-      }
-
-      spawnGroundBasketballs();
-
-      // Automatically collect nearest ball at start so player starts ready
-      autoPickupNearestBall();
-
-      clearInterval(timerInterval);
-      timerInterval = setInterval(() => {
-        timerSeconds--;
-        updateTimerDisplay();
-        if (timerSeconds <= 0) {
-          endGame();
-        }
-      }, 1000);
-    }
-
-    function updateTimerDisplay() {
-      const mins = Math.floor(timerSeconds / 60).toString().padStart(2, '0');
-      const secs = (timerSeconds % 60).toString().padStart(2, '0');
-      document.getElementById('hud-timer').innerText = `${mins}:${secs}`;
-    }
-
-    // --- FIXED & IMPROVED PICKUP MECHANIC ---
-    // Immediate Distance + Raycast Aim Auto-Pickup System
-    function updatePickupMechanic() {
-      if (isHoldingBall || isShooting) return;
-
-      const uncollected = basketballs.filter(b => !b.isCollected);
-      if (uncollected.length === 0) return;
-
-      let targetBallToCollect = null;
-
-      // 1. Direct Proximity Check (Nearest ball within 2.5m threshold)
-      for (let ball of uncollected) {
-        const dist = camera.position.distanceTo(ball.mesh.position);
-        if (dist <= PICKUP_RADIUS_DIRECT) {
-          targetBallToCollect = ball;
-          break;
-        }
-      }
-
-      // 2. Aim Raycast Check (Within 4.5m if aiming closely)
-      if (!targetBallToCollect) {
-        const raycaster = new THREE.Raycaster();
-        raycaster.setFromCamera(new THREE.Vector2(0, 0.2), camera); // Match reticle
-        const intersects = raycaster.intersectObjects(uncollected.map(b => b.mesh));
-
-        if (intersects.length > 0) {
-          const hitMesh = intersects[0].object;
-          const hitBall = uncollected.find(b => b.mesh === hitMesh);
-          if (hitBall && intersects[0].distance <= PICKUP_RADIUS_AIM) {
-            targetBallToCollect = hitBall;
-          }
-        }
-      }
-
-      // Collect ball if any condition matched
-      if (targetBallToCollect) {
-        collectBall(targetBallToCollect);
-      }
-    }
-
-    function autoPickupNearestBall() {
-      const uncollected = basketballs.filter(b => !b.isCollected);
-      if (uncollected.length > 0) {
-        // Collect closest ball immediately
-        uncollected.sort((a, b) => camera.position.distanceTo(a.mesh.position) - camera.position.distanceTo(b.mesh.position));
-        collectBall(uncollected[0]);
-      }
-    }
-
-    // Collect Ball Action
-    function collectBall(ballObj) {
-      ballObj.isCollected = true;
-      scene.remove(ballObj.mesh);
-
-      isHoldingBall = true;
-      heldBallMesh.visible = true;
-
-      const promptEl = document.getElementById('shoot-prompt');
-      const promptText = document.getElementById('prompt-text');
-      promptText.innerText = isMobile ? "已持球！向上揮動手機投籃" : "已持球！按下 [空白鍵] 或甩動投籃";
-      promptEl.classList.remove('hidden');
-
-      const hintEl = document.getElementById('reticle-hint');
-      if (hintEl) hintEl.innerText = "已就位！請向上揮動或按空白鍵投籃";
-    }
-
-    // --- Intuitive Shooting Physics & Trajectory Launch ---
-    function shootBasketball() {
-      if (!isHoldingBall || isShooting) return;
-
-      isHoldingBall = false;
-      isShooting = true;
-      heldBallMesh.visible = false;
-      document.getElementById('shoot-prompt').classList.add('hidden');
-
-      const hintEl = document.getElementById('reticle-hint');
-      if (hintEl) hintEl.innerText = "靠近或對準籃球即可自動撿起";
-
-      ballsRemaining--;
-      document.getElementById('hud-balls').innerText = `${ballsRemaining} / ${MAX_BALLS}`;
-
-      const ballMesh = createBasketballMesh(0.22);
-      const launchPos = camera.position.clone().add(camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(0.5));
-      launchPos.y -= 0.1;
-      ballMesh.position.copy(launchPos);
-      scene.add(ballMesh);
-
-      const aimDir = new THREE.Vector3();
-      camera.getWorldDirection(aimDir);
-
-      const forwardPower = 8.5;
-      const upwardPower = 4.8;
-
-      const velocity = aimDir.clone().multiplyScalar(forwardPower);
-      velocity.y += upwardPower;
-
-      const shotDistFromHoop = new THREE.Vector2(launchPos.x, launchPos.z).distanceTo(new THREE.Vector2(rimCenterPos.x, rimCenterPos.z));
-      const isThreePointer = shotDistFromHoop >= THREE_POINT_RADIUS;
-
-      activeShotBall = {
-        mesh: ballMesh,
-        velocity: velocity,
-        rotationalVelocity: new THREE.Vector3(Math.random() * 5 + 5, Math.random() * 2, 0),
-        isThreePointer: isThreePointer,
-        hasScored: false,
-        alive: true
-      };
-
-      cameraMode = 'FOLLOW_BALL';
-    }
-
-    // --- Physics Engine with Magnetic Assist ---
-    function updateShotPhysics(deltaTime) {
-      if (!activeShotBall || !activeShotBall.alive) return;
-
-      const ball = activeShotBall;
-      const pos = ball.mesh.position;
-
-      // Gravity
-      ball.velocity.y -= 9.8 * deltaTime;
-
-      // Magnetic Attraction Assist near rim center
-      const distToRim = pos.distanceTo(rimCenterPos);
-      if (distToRim < 3.0 && !ball.hasScored) {
-        const pullDir = rimCenterPos.clone().sub(pos).normalize();
-        const pullStrength = 3.2 * (1.0 - distToRim / 3.0);
-        ball.velocity.add(pullDir.multiplyScalar(pullStrength * deltaTime));
-      }
-
-      // Movement
-      pos.add(ball.velocity.clone().multiplyScalar(deltaTime));
-
-      // Ball Rotation
-      ball.mesh.rotation.x += ball.rotationalVelocity.x * deltaTime;
-      ball.mesh.rotation.y += ball.rotationalVelocity.y * deltaTime;
-
-      // Backboard Bounce
-      if (backboardMesh) {
-        const bbBox = new THREE.Box3().setFromObject(backboardMesh);
-        const ballSphere = new THREE.Sphere(pos, 0.22);
-
-        if (bbBox.intersectsSphere(ballSphere)) {
-          ball.velocity.z *= -0.65;
-          ball.velocity.x += (Math.random() - 0.5) * 0.5;
-          pos.z = bbBox.max.z + 0.23;
-        }
-      }
-
-      // Scoring Condition
-      if (!ball.hasScored && distToRim < 0.38 && Math.abs(pos.y - rimCenterPos.y) < 0.25 && ball.velocity.y < 0) {
-        triggerScoreGoal(ball);
-      }
-
-      // Ground Touch
-      if (pos.y <= 0.22) {
-        pos.y = 0.22;
-        ball.alive = false;
-
-        setTimeout(() => {
-          if (activeShotBall) {
-            scene.remove(activeShotBall.mesh);
-            activeShotBall = null;
-          }
-          isShooting = false;
-          cameraMode = 'PLAYER';
-
-          if (ballsRemaining <= 0) {
-            endGame();
-          } else {
-            // Automatically pickup next available ball
-            autoPickupNearestBall();
-          }
-        }, 300);
-      }
-    }
-
-    // --- Goal Scoring & Golden Backboard Flash ---
-    function triggerScoreGoal(ball) {
-      ball.hasScored = true;
-      const pts = ball.isThreePointer ? 3 : 2;
-      score += pts;
-
-      document.getElementById('hud-score').innerText = score;
-
-      if (backboardMaterial) {
-        const origColor = backboardMaterial.color.getHex();
-        backboardMaterial.color.setHex(0xffd700);
-        backboardMaterial.emissive.setHex(0xffaa00);
-        setTimeout(() => {
-          backboardMaterial.color.setHex(origColor);
-          backboardMaterial.emissive.setHex(0x000000);
-        }, 500);
-      }
-
-      showScoreToast(pts, ball.isThreePointer);
-    }
-
-    function showScoreToast(pts, isThree) {
-      const toast = document.getElementById('score-toast');
-      const text = document.getElementById('score-toast-text');
-      text.innerText = isThree ? `+${pts}分 三分大爆發！` : `+${pts}分 帥氣進球！`;
-
-      toast.classList.remove('hidden');
-      requestAnimationFrame(() => {
-        toast.classList.remove('scale-50', 'opacity-0');
-        toast.classList.add('scale-100', 'opacity-100');
-      });
-
-      setTimeout(() => {
-        toast.classList.remove('scale-100', 'opacity-100');
-        toast.classList.add('scale-50', 'opacity-0');
-        setTimeout(() => toast.classList.add('hidden'), 300);
-      }, 1400);
-    }
-
-    // --- Game Over Logic ---
-    function endGame() {
-      isGameActive = false;
-      clearInterval(timerInterval);
-
-      document.getElementById('hud').classList.add('hidden');
-      document.getElementById('reticle').classList.add('hidden');
-      document.getElementById('shoot-prompt').classList.add('hidden');
-
-      document.getElementById('result-player-name').innerText = playerName;
-      document.getElementById('result-final-score').innerText = score;
-      document.getElementById('result-detail').innerText = `全場 30 顆籃球挑戰完成`;
-
-      document.getElementById('result-modal').classList.remove('hidden');
-    }
-
-    // --- Animation & Camera Loop ---
-    let clock = new THREE.Clock();
-
-    function animate() {
-      requestAnimationFrame(animate);
-
-      const deltaTime = clock.getDelta();
-
-      if (isGameActive) {
-        // Held Ball Visual Update
-        if (isHoldingBall && heldBallMesh) {
-          heldBallMesh.rotation.y += 1.5 * deltaTime;
-          const camDir = camera.getWorldDirection(new THREE.Vector3());
-          const targetHeldPos = camera.position.clone().add(camDir.multiplyScalar(0.75));
-          targetHeldPos.y -= 0.18;
-          heldBallMesh.position.copy(targetHeldPos);
-        }
-
-        // Check for Auto Pickup
-        updatePickupMechanic();
-
-        // Physics Engine Update
-        updateShotPhysics(deltaTime);
-      }
-
-      // Camera Position Engine
-      updateCameraPosition(deltaTime);
-
-      // Render
-      renderer.render(scene, camera);
-    }
-
-    // Dynamic Camera Position Engine
-    function updateCameraPosition(deltaTime) {
-      if (cameraMode === 'PLAYER') {
-        camera.position.copy(playerPosition);
-        const euler = new THREE.Euler(cameraPitch, cameraYaw, 0, 'YXZ');
-        camera.quaternion.setFromEuler(euler);
-      } else if (cameraMode === 'FOLLOW_BALL' && activeShotBall) {
-        const ballPos = activeShotBall.mesh.position;
-        const targetCamPos = ballPos.clone().add(new THREE.Vector3(0, 0.6, 1.8));
-        camera.position.lerp(targetCamPos, 0.12);
-        camera.lookAt(rimCenterPos.clone().add(new THREE.Vector3(0, 0.2, 0)));
-      }
-    }
-
-    // --- Window Resize Handler ---
-    function onWindowResize() {
-      camera.aspect = window.innerWidth / window.innerHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
-    }
-  </script>
-</body>
-</html>
+  <button id="btn-restart" class="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 active:scale-[0.98] text-slate-950 font-black text-lg py-4 rounded-xl shadow-lg shadow-emerald-500/30 transition duration-150">
+    重新開始
+  </button>
+</div>
