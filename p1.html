@@ -40,26 +40,26 @@
     }
 
     .reticle-circle {
-      width: 48px;
-      height: 48px;
-      border: 3px solid rgba(239, 68, 68, 0.85);
+      width: 72px;
+      height: 72px;
+      border: 4px solid rgba(239, 68, 68, 0.85);
       border-radius: 50%;
-      box-shadow: 0 0 12px rgba(239, 68, 68, 0.6), inset 0 0 8px rgba(239, 68, 68, 0.4);
+      box-shadow: 0 0 16px rgba(239, 68, 68, 0.6), inset 0 0 10px rgba(239, 68, 68, 0.4);
       transition: all 0.2s ease-out;
     }
 
     .reticle-circle.active {
-      width: 58px;
-      height: 58px;
+      width: 86px;
+      height: 86px;
       border-color: #22c55e;
-      box-shadow: 0 0 18px rgba(34, 197, 94, 0.9), inset 0 0 12px rgba(34, 197, 94, 0.6);
+      box-shadow: 0 0 24px rgba(34, 197, 94, 0.9), inset 0 0 16px rgba(34, 197, 94, 0.6);
       animation: reticlePulse 0.8s infinite alternate ease-in-out;
     }
 
     .reticle-dot {
       position: absolute;
-      width: 6px;
-      height: 6px;
+      width: 8px;
+      height: 8px;
       background-color: #ef4444;
       border-radius: 50%;
     }
@@ -453,10 +453,10 @@
       grassMesh.receiveShadow = true;
       scene.add(grassMesh);
 
-      // Deep Blue Court
+      // Deep Dark Blue Court (加深為極深藍 #030f26)
       const courtGeo = new THREE.PlaneGeometry(CONFIG.courtWidth, CONFIG.courtLength);
       const courtMat = new THREE.MeshStandardMaterial({
-        color: 0x1e3a8a,
+        color: 0x030f26,
         roughness: 0.35,
         metalness: 0.1
       });
@@ -666,7 +666,7 @@
     let lastShootTime = 0;
 
     function setupControls() {
-      // 1. DeviceOrientation (視角轉動與俯仰角變化)
+      // 1. DeviceOrientation (視角轉動與俯仰角變化 - 修正左右轉動方向)
       window.addEventListener('deviceorientation', (e) => {
         if (!gameState.isPlaying) return;
 
@@ -676,7 +676,8 @@
           gyroData.prevBeta = currentBeta;
 
           cameraRotation.pitch = THREE.MathUtils.degToRad(currentBeta - 45);
-          cameraRotation.yaw = THREE.MathUtils.degToRad(-e.alpha || -e.gamma || 0);
+          // 反轉 yaw 方向，使左右轉動恢復自然直覺
+          cameraRotation.yaw = THREE.MathUtils.degToRad(e.alpha || e.gamma || 0);
 
           // 超靈敏判定 1：iPad 向上仰角快速變化 (delta beta > 3.2 即可觸發)
           const now = Date.now();
@@ -694,21 +695,18 @@
         const now = Date.now();
         if (now - lastShootTime < 600) return;
 
-        // 旋轉角速度或向上加速度
         const rotRate = e.rotationRate;
         const accel = e.accelerationIncludingGravity || e.acceleration;
 
         let isJerkUp = false;
 
         if (rotRate) {
-          // 繞 X 軸 (beta) 或 Alpha 快速向上甩動
           if (Math.abs(rotRate.beta) > 25 || Math.abs(rotRate.alpha) > 25) {
             isJerkUp = true;
           }
         }
 
         if (accel && !isJerkUp) {
-          // 沿 Y/Z 軸向上拉甩的加速度
           if (accel.y > 4.0 || accel.z > 4.0) {
             isJerkUp = true;
           }
@@ -720,7 +718,7 @@
         }
       });
 
-      // Mouse Look Handler
+      // Mouse Look Handler (修正滑鼠左右拖曳方向)
       let isMouseDown = false;
       let prevMousePos = { x: 0, y: 0 };
 
@@ -736,7 +734,8 @@
         const deltaY = e.clientY - prevMousePos.y;
         prevMousePos = { x: e.clientX, y: e.clientY };
 
-        cameraRotation.yaw -= deltaX * 0.0035;
+        // 修正左右拖曳方向為正號（反轉左右控制）
+        cameraRotation.yaw += deltaX * 0.0035;
         cameraRotation.pitch -= deltaY * 0.0035;
 
         cameraRotation.pitch = Math.max(-Math.PI / 2.1, Math.min(Math.PI / 2.1, cameraRotation.pitch));
@@ -1085,7 +1084,8 @@
           camera.quaternion.setFromEuler(euler);
 
           if (gameState.isHoldingBall && heldBallMesh) {
-            const forward = new THREE.Vector3(0, -0.24, -0.55).applyQuaternion(camera.quaternion);
+            // 球心精準對齊鏡頭正中央 (x=0, y=0)，距離 0.5m，完美與螢幕中央紅圈重疊
+            const forward = new THREE.Vector3(0, 0, -0.5).applyQuaternion(camera.quaternion);
             heldBallMesh.position.copy(camera.position).add(forward);
             heldBallMesh.rotation.y += 1.5 * delta;
           }
