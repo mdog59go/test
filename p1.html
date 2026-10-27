@@ -14,9 +14,9 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            width: 76px;
-            height: 76px;
-            border: 3.5px solid rgba(239, 68, 68, 0.9);
+            width: 80px;
+            height: 80px;
+            border: 4px solid rgba(239, 68, 68, 0.9);
             border-radius: 50%;
             pointer-events: none;
             display: flex;
@@ -24,11 +24,15 @@
             justify-content: center;
             box-shadow: 0 0 20px rgba(239, 68, 68, 0.6);
             transition: border-color 0.2s ease, transform 0.1s ease;
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            z-index: 20;
         }
         .crosshair::after {
             content: '';
-            width: 10px;
-            height: 10px;
+            width: 8px;
+            height: 8px;
             background-color: rgba(239, 68, 68, 0.95);
             border-radius: 50%;
         }
@@ -652,34 +656,28 @@
 
             heldBallMesh = new THREE.Mesh(ballGeo, ballMat);
 
-            // 將持球直接 attach 至 camera 的子空間，確保極致精準對齊畫面正中央與瞄準紅圈
-            // 相對座標：X=0 (畫面水平正中), Y=-0.2 (稍微偏下方不遮擋視野), Z=-0.9 (相機正前方)
-            heldBallMesh.position.set(0, -0.2, -0.9);
+            // 將持球直接 attach 至 camera 的子空間，精準對齊畫面正中央與紅圈 (X=0, Y=-0.05, Z=-0.75)
+            heldBallMesh.position.set(0, -0.05, -0.75);
             camera.add(heldBallMesh);
         }
 
         function triggerShoot() {
             if (!isHoldingBall || flyingBall) return;
 
-            // 計算投籃時球體的真實世界座標與方向
-            const shootPos = new THREE.Vector3();
+            isHoldingBall = false;
             if (heldBallMesh) {
-                heldBallMesh.getWorldPosition(shootPos);
-                camera.remove(heldBallMesh); // 從相機子物件中移除
+                // 投籃時自相機節點中移除並轉換至世界座標
+                camera.remove(heldBallMesh);
                 heldBallMesh = null;
-            } else {
-                shootPos.copy(camera.position);
             }
 
-            isHoldingBall = false;
-
+            const shootPos = camera.position.clone();
             const shootDir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
 
-            // 於世界座標重新生成 100% 不透明之實體籃球進行拋物線運動
             const ballGeo = new THREE.SphereGeometry(0.24, 32, 32);
             const ballMat = new THREE.MeshStandardMaterial({ color: 0xff5722, roughness: 0.5 });
             const ballMesh = new THREE.Mesh(ballGeo, ballMat);
-            ballMesh.position.copy(shootPos);
+            ballMesh.position.copy(shootPos).add(shootDir.clone().multiplyScalar(0.8));
             ballMesh.castShadow = true;
             scene.add(ballMesh);
 
@@ -693,7 +691,7 @@
                 }
             });
 
-            // 給予向前與向上的拋物線初速度
+            // 給予拋物線初速度
             const initialVelocity = shootDir.clone().multiplyScalar(11.5).add(new THREE.Vector3(0, 5.8, 0));
 
             flyingBall = {
