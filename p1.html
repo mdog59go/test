@@ -538,13 +538,11 @@
       const bbGroup = new THREE.Group();
       bbGroup.position.set(0, 3.3, 0);
 
-      const bbBoardMat = new THREE.MeshPhysicalMaterial({
+      // 1. 籃板改為純白底 (Solid White)
+      const bbBoardMat = new THREE.MeshStandardMaterial({
         color: 0xffffff,
-        transmission: 0.7,
-        opacity: 0.95,
-        transparent: true,
-        roughness: 0.1,
-        ior: 1.5
+        roughness: 0.2,
+        metalness: 0.1
       });
       const bbBoard = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.05, 0.05), bbBoardMat);
       bbBoard.castShadow = true;
@@ -555,17 +553,30 @@
         mainBackboardBox.setFromObject(bbBoard);
       }
 
-      // Red Outer Frame & Inner Square
+      // 籃板紅色外邊線 (Red Outer Border)
       const redFrameMat = new THREE.MeshBasicMaterial({ color: 0xd97706 });
       const bbFrame = new THREE.Mesh(new THREE.BoxGeometry(1.84, 1.09, 0.02), redFrameMat);
       bbFrame.position.z = -0.02;
       bbGroup.add(bbFrame);
 
-      const innerRectGeo = new THREE.BoxGeometry(0.59, 0.45, 0.06);
-      const innerRectMat = new THREE.MeshBasicMaterial({ color: 0xd97706, wireframe: true });
-      const innerRect = new THREE.Mesh(innerRectGeo, innerRectMat);
-      innerRect.position.set(0, -0.2, 0.01);
-      bbGroup.add(innerRect);
+      // 籃板中心紅色圓圈 (Red Circle Accent Canvas)
+      const circleCanvas = document.createElement('canvas');
+      circleCanvas.width = 256;
+      circleCanvas.height = 256;
+      const cctx = circleCanvas.getContext('2d');
+      cctx.clearRect(0, 0, 256, 256);
+      cctx.strokeStyle = '#d97706';
+      cctx.lineWidth = 16;
+      cctx.beginPath();
+      cctx.arc(128, 128, 70, 0, Math.PI * 2);
+      cctx.stroke();
+
+      const circleTexture = new THREE.CanvasTexture(circleCanvas);
+      const circleGeo = new THREE.PlaneGeometry(0.55, 0.55);
+      const circleMat = new THREE.MeshBasicMaterial({ map: circleTexture, transparent: true, depthWrite: false });
+      const circleMesh = new THREE.Mesh(circleGeo, circleMat);
+      circleMesh.position.set(0, -0.12, 0.028);
+      bbGroup.add(circleMesh);
 
       // Golden Flash Overlay Mesh
       const flashMat = new THREE.MeshBasicMaterial({ color: 0xffd700, transparent: true, opacity: 0 });
@@ -650,9 +661,12 @@
 
     /**
      * Controls Architecture (Gyroscope + PC Mouse/Keyboard)
+     * 優化：大幅降低甩動門檻與雙重動態偵測 (Devicemotion + Deviceorientation)
      */
+    let lastShootTime = 0;
+
     function setupControls() {
-      // Gyroscope Handler
+      // 1. DeviceOrientation (視角轉動與俯仰角變化)
       window.addEventListener('deviceorientation', (e) => {
         if (!gameState.isPlaying) return;
 
@@ -664,10 +678,45 @@
           cameraRotation.pitch = THREE.MathUtils.degToRad(currentBeta - 45);
           cameraRotation.yaw = THREE.MathUtils.degToRad(-e.alpha || -e.gamma || 0);
 
-          // iPad Rapid Upward Gesture Trigger
-          if (gameState.isHoldingBall && gyroData.betaVel > CONFIG.shootPitchThreshold * 14) {
+          // 超靈敏判定 1：iPad 向上仰角快速變化 (delta beta > 3.2 即可觸發)
+          const now = Date.now();
+          if (gameState.isHoldingBall && gyroData.betaVel > 3.2 && (now - lastShootTime > 600)) {
+            lastShootTime = now;
             shootBall();
           }
+        }
+      });
+
+      // 2. DeviceMotion (角速度與加速度偵測 - 靈敏捕捉向上甩動)
+      window.addEventListener('devicemotion', (e) => {
+        if (!gameState.isPlaying || !gameState.isHoldingBall) return;
+
+        const now = Date.now();
+        if (now - lastShootTime < 600) return;
+
+        // 旋轉角速度或向上加速度
+        const rotRate = e.rotationRate;
+        const accel = e.accelerationIncludingGravity || e.acceleration;
+
+        let isJerkUp = false;
+
+        if (rotRate) {
+          // 繞 X 軸 (beta) 或 Alpha 快速向上甩動
+          if (Math.abs(rotRate.beta) > 25 || Math.abs(rotRate.alpha) > 25) {
+            isJerkUp = true;
+          }
+        }
+
+        if (accel && !isJerkUp) {
+          // 沿 Y/Z 軸向上拉甩的加速度
+          if (accel.y > 4.0 || accel.z > 4.0) {
+            isJerkUp = true;
+          }
+        }
+
+        if (isJerkUp) {
+          lastShootTime = now;
+          shootBall();
         }
       });
 
@@ -704,13 +753,31 @@
     }
 
     /**
-     * Start Game Process
+     * Start Game Process (包含完整的 iOS 13+ Devicemotion & Deviceorientation 授權請求)
      */
     function startGame() {
       sounds.init();
 
+      // iOS Device Orientation 權限
       if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-        DeviceOrientationEvent.requestPermission().catch(console.error);
+        DeviceOrientationEvent.requestPermission()
+          .then(permissionState => {
+            if (permissionState === 'granted') {
+              console.log("DeviceOrientation 授權成功");
+            }
+          })
+          .catch(console.error);
+      }
+
+      // iOS Device Motion 權限
+      if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+        DeviceMotionEvent.requestPermission()
+          .then(permissionState => {
+            if (permissionState === 'granted') {
+              console.log("DeviceMotion 授權成功");
+            }
+          })
+          .catch(console.error);
       }
 
       const inputName = document.getElementById('player-name-input').value.trim();
