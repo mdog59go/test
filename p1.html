@@ -313,7 +313,7 @@
             courtWidth: 10,
             courtLength: 12,
             rimHeight: 2.5,
-            rimZ: -5.5, // 主要瞄準前方籃框 (Z負方向)
+            rimZ: -5.5, // 前方主要瞄準與磁吸目標籃框 (Z負方向)
             threePointRadius: 5.0,
             totalBalls: 30,
             gameDuration: 180, // 秒
@@ -340,14 +340,13 @@
         let frontRimMesh, frontBoardMesh, frontRimLight;
         let heldBallDisplayMesh;
 
-        // --- 視角與控制變數 ---
+        // --- 視角與控制變數 (支援360度自由環視與俯仰) ---
         let cameraRotation = { yaw: 0, pitch: 0 }; // 弧度
         let isMouseDown = false;
         let previousMousePosition = { x: 0, y: 0 };
         
-        // 玩家相機位置 (支援慢跑移動)
         let playerPos = new THREE.Vector3(0, 1.6, 5);
-        let targetApproachBall = null; // 當前瞄準並正在慢跑靠近的球
+        let targetApproachBall = null;
 
         // 陀螺儀數據
         let lastMotionTime = 0;
@@ -629,7 +628,8 @@
 
                 cameraRotation.yaw -= deltaX * 0.003;
                 cameraRotation.pitch -= deltaY * 0.003;
-                cameraRotation.pitch = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, cameraRotation.pitch));
+                // 俯仰角限制在直覺垂直範圍內 (-85度 ~ +85度)
+                cameraRotation.pitch = Math.max(-Math.PI / 2.1, Math.min(Math.PI / 2.1, cameraRotation.pitch));
 
                 previousMousePosition = { x: e.clientX, y: e.clientY };
             });
@@ -671,9 +671,10 @@
                 const beta = e.beta || 0;
                 const gamma = e.gamma || 0;
 
+                // 左右鏡向修正與 360 度全視角對應
                 cameraRotation.yaw = THREE.MathUtils.degToRad(-gamma * 1.5);
                 cameraRotation.pitch = THREE.MathUtils.degToRad((beta - 45) * 1.2);
-                cameraRotation.pitch = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, cameraRotation.pitch));
+                cameraRotation.pitch = Math.max(-Math.PI / 2.1, Math.min(Math.PI / 2.1, cameraRotation.pitch));
 
                 const now = Date.now();
                 if (now - lastMotionTime > 80) {
@@ -760,7 +761,6 @@
                 return;
             }
 
-            // 用 Raycaster 檢測瞄準中心點對到的球
             const raycaster = new THREE.Raycaster();
             raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
             const intersects = raycaster.intersectObjects(ballsArray);
@@ -774,9 +774,7 @@
                 statusMsg.textContent = "請將紅色瞄準圈對準地上的籃球";
             }
 
-            // 若已有鎖定的球，自動慢跑靠近
             if (targetApproachBall) {
-                // 若該球已被移除防呆
                 if (!ballsArray.includes(targetApproachBall)) {
                     targetApproachBall = null;
                     return;
@@ -787,19 +785,16 @@
                 const ballXZ = new THREE.Vector3(ballPos.x, 0, ballPos.z);
                 const dist = playerXZ.distanceTo(ballXZ);
 
-                // 當靠近至 0.6 米以內，判定撿起
                 if (dist < 0.6) {
                     const picked = targetApproachBall;
                     targetApproachBall = null;
                     crosshair.classList.remove('approaching');
                     pickupBall(picked);
                 } else {
-                    // 以慢跑速度向該球平滑移動
                     const dir = ballXZ.sub(playerXZ).normalize();
                     playerPos.x += dir.x * CONFIG.jogSpeed * delta;
                     playerPos.z += dir.z * CONFIG.jogSpeed * delta;
 
-                    // 邊界限制在球場內
                     playerPos.x = Math.max(-CONFIG.courtWidth/2 + 0.5, Math.min(CONFIG.courtWidth/2 - 0.5, playerPos.x));
                     playerPos.z = Math.max(-CONFIG.courtLength/2 + 0.5, Math.min(CONFIG.courtLength/2 - 0.5, playerPos.z));
                 }
@@ -866,13 +861,13 @@
 
             vel.y -= 9.8 * delta;
 
-            // 前方主籃框磁吸輔助
+            // ⭐ 僅前方主籃框對投出的球具有柔和磁吸引力引導 ⭐
             const targetRimPos = new THREE.Vector3(0, CONFIG.rimHeight, CONFIG.rimZ - 0.23);
             const distToTarget = pos.distanceTo(targetRimPos);
 
-            if (distToTarget < 3.5 && pos.z < 0) {
+            if (distToTarget < 4.0 && pos.z < 0) {
                 const attractDir = targetRimPos.clone().sub(pos).normalize();
-                const forceMagnitude = Math.max(0, (3.5 - distToTarget) * 2.2);
+                const forceMagnitude = Math.max(0, (4.0 - distToTarget) * 2.5);
                 vel.add(attractDir.multiplyScalar(forceMagnitude * delta));
             }
 
