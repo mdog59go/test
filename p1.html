@@ -34,7 +34,7 @@
     /* Reticle UI */
     .reticle-container {
       position: absolute;
-      top: 38%; /* Center-upper area as specified */
+      top: 40%;
       left: 50%;
       transform: translate(-50%, -50%);
       pointer-events: none;
@@ -42,12 +42,12 @@
     }
 
     .reticle-circle {
-      width: 110px;
-      height: 110px;
-      border: 4px solid rgba(239, 68, 68, 0.85);
+      width: 100px;
+      height: 100px;
+      border: 3px solid rgba(239, 68, 68, 0.85);
       border-radius: 50%;
       position: relative;
-      box-shadow: 0 0 15px rgba(239, 68, 68, 0.6), inset 0 0 10px rgba(239, 68, 68, 0.4);
+      box-shadow: 0 0 15px rgba(239, 68, 68, 0.5), inset 0 0 10px rgba(239, 68, 68, 0.3);
       animation: pulse-border 2s infinite ease-in-out;
     }
 
@@ -56,7 +56,7 @@
       top: 50%;
       left: 15%;
       width: 70%;
-      height: 3px;
+      height: 2px;
       background-color: rgba(239, 68, 68, 0.9);
       transform: translateY(-50%);
     }
@@ -66,7 +66,7 @@
       left: 50%;
       top: 15%;
       height: 70%;
-      width: 3px;
+      width: 2px;
       background-color: rgba(239, 68, 68, 0.9);
       transform: translateX(-50%);
     }
@@ -132,8 +132,8 @@
       <div class="reticle-cross-v"></div>
       <div class="reticle-dot"></div>
     </div>
-    <div id="reticle-hint" class="text-xs text-center mt-2 font-bold tracking-wider text-red-400 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
-      瞄準地上籃球自動向前
+    <div id="reticle-hint" class="text-xs text-center mt-2 font-bold tracking-wider text-amber-300 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
+      靠近或對準籃球即可自動撿起
     </div>
   </div>
 
@@ -193,7 +193,7 @@
       <p id="result-player-name" class="text-amber-400 font-bold text-lg mb-4">一甲國小練習生</p>
 
       <div class="bg-slate-800/80 border border-slate-700/60 rounded-2xl p-6 mb-6">
-        <div class="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-1">最終得總分</div>
+        <div class="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-1">最終得分</div>
         <div id="result-final-score" class="text-5xl font-black text-amber-400 font-mono tracking-tight">0</div>
         <div id="result-detail" class="text-xs text-slate-400 mt-3 font-medium">共投出 30 顆球</div>
       </div>
@@ -208,7 +208,7 @@
   <script>
     /**
      * 3D Basketball Game Core Architecture
-     * Features: Three.js Physics & Magnetic Assist, Mobile Gyro Control, Smooth Auto-Walk, Dynamic Camera Tracking
+     * Simplified Intuitive Pickup Mechanism + Dynamic Shooting & Physics
      */
 
     // --- Global Configuration & Constants ---
@@ -220,7 +220,8 @@
     const THREE_POINT_RADIUS = 5.0; // 5 meters arc
     const MAX_BALLS = 30;
     const TOTAL_TIME = 180;     // 3 minutes (180s)
-    const PLAYER_SPEED = 4.2;   // Speed of auto-walking to pickup balls
+    const PICKUP_RADIUS_DIRECT = 2.5; // Direct distance threshold to pickup (2.5 meters)
+    const PICKUP_RADIUS_AIM = 4.5;    // Aim distance threshold (4.5 meters)
 
     // --- State Variables ---
     let playerName = "一甲國小練習生";
@@ -239,13 +240,11 @@
     let isMouseDown = false;
     let previousMousePosition = { x: 0, y: 0 };
     let playerPosition = new THREE.Vector3(0, 1.6, 3.5); // Initial player standing point
-    let targetBallToPickup = null;
 
     // Device Gyroscope Variables
     let rawAlpha = 0, rawBeta = 0, rawGamma = 0;
     let initialAlpha = null;
     let lastBeta = 0;
-    let motionTriggerActive = false;
 
     // Three.js Core Setup
     let scene, camera, renderer;
@@ -256,7 +255,6 @@
 
     // Dynamic Follow Camera State
     let cameraMode = 'PLAYER'; // 'PLAYER' or 'FOLLOW_BALL'
-    let followCamPos = new THREE.Vector3();
 
     // Visual Flash Material Reference
     let backboardMaterial;
@@ -431,7 +429,7 @@
       hoopGroup.position.set(0, 0, zPos);
       hoopGroup.rotation.y = rotationY;
 
-      // 1. Support Post (Behind backboard)
+      // Support Post
       const postGeo = new THREE.CylinderGeometry(0.1, 0.12, 3.6, 16);
       const postMat = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.8, roughness: 0.3 });
       const postMesh = new THREE.Mesh(postGeo, postMat);
@@ -444,7 +442,7 @@
       armMesh.position.set(0, HOOP_HEIGHT + 0.3, -0.2);
       hoopGroup.add(armMesh);
 
-      // 2. Backboard (Pure White Solid with Red Border & Rectangle Target)
+      // Backboard
       const bbGeo = new THREE.BoxGeometry(1.8, 1.05, 0.05);
       backboardMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2 });
       const bbMesh = new THREE.Mesh(bbGeo, backboardMaterial);
@@ -453,21 +451,19 @@
       hoopGroup.add(bbMesh);
 
       if (zPos === HOOP_Z) {
-        backboardMesh = bbMesh; // Store reference for flash animation & collisions
+        backboardMesh = bbMesh;
       }
 
-      // Red Outer Border & Inner Rectangle Overlay
+      // Red Frame & Target
       const canvas = document.createElement('canvas');
       canvas.width = 512;
       canvas.height = 300;
       const ctx = canvas.getContext('2d');
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, 512, 300);
-      // Red Outer Frame
       ctx.strokeStyle = '#dc2626';
       ctx.lineWidth = 24;
       ctx.strokeRect(0, 0, 512, 300);
-      // Inner Red Rect Target Above Rim
       ctx.lineWidth = 16;
       ctx.strokeRect(176, 140, 160, 110);
 
@@ -478,7 +474,7 @@
       bbFrontMesh.position.set(0, HOOP_HEIGHT + 0.35, 0.027);
       hoopGroup.add(bbFrontMesh);
 
-      // 3. Metallic Orange-Red Rim & Net
+      // Orange-Red Metallic Rim
       const rimRadius = 0.32;
       const rimGeo = new THREE.TorusGeometry(rimRadius, 0.025, 16, 32);
       const rimMat = new THREE.MeshStandardMaterial({ color: 0xea580c, metalness: 0.9, roughness: 0.2 });
@@ -493,7 +489,7 @@
         rimCenterPos = new THREE.Vector3(0, HOOP_HEIGHT, HOOP_Z + 0.35);
       }
 
-      // White Net Mesh (Cone Geometry)
+      // Net Mesh
       const netGeo = new THREE.ConeGeometry(rimRadius, 0.5, 16, 1, true);
       const netMat = new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true, transparent: true, opacity: 0.75 });
       const netMesh = new THREE.Mesh(netGeo, netMat);
@@ -506,34 +502,26 @@
     // --- Procedural Basketball Mesh Generator ---
     function createBasketballMesh(radius = 0.22) {
       const geo = new THREE.SphereGeometry(radius, 32, 32);
-
-      // Procedural Basketball Texture Canvas
       const canvas = document.createElement('canvas');
       canvas.width = 512;
       canvas.height = 256;
       const ctx = canvas.getContext('2d');
 
-      // Base Classic Orange-Red Color with Leather Grain
       ctx.fillStyle = '#d97706';
       ctx.fillRect(0, 0, 512, 256);
-
-      // Draw Black Seams / Grooves
       ctx.strokeStyle = '#18181b';
       ctx.lineWidth = 8;
 
-      // Horizontal Center Line
       ctx.beginPath();
       ctx.moveTo(0, 128);
       ctx.lineTo(512, 128);
       ctx.stroke();
 
-      // Vertical Center Line
       ctx.beginPath();
       ctx.moveTo(256, 0);
       ctx.lineTo(256, 256);
       ctx.stroke();
 
-      // Curved Seams
       ctx.beginPath();
       ctx.arc(128, 128, 90, 0, Math.PI * 2);
       ctx.stroke();
@@ -567,17 +555,14 @@
 
     // --- Basketball Spawning Mechanics ---
     function spawnGroundBasketballs() {
-      // Clear existing balls
       basketballs.forEach(b => scene.remove(b.mesh));
       basketballs = [];
 
-      // Randomly scatter 30 basketballs on half court within 8m range
+      // Randomly scatter 30 basketballs within easy pickup range
       for (let i = 0; i < MAX_BALLS; i++) {
         const ballMesh = createBasketballMesh(0.22);
-
-        // Random positions within x: [-4, 4], z: [-4, 3.5]
         const rx = (Math.random() - 0.5) * 8.0;
-        const rz = (Math.random() - 0.5) * 7.5 - 0.5;
+        const rz = (Math.random() - 0.5) * 7.0 + 0.5;
 
         ballMesh.position.set(rx, 0.22, rz);
         scene.add(ballMesh);
@@ -590,7 +575,7 @@
       }
     }
 
-    // --- User Authorization & Game Start Workflow ---
+    // --- User Authorization & Event Listeners ---
     function setupEventListeners() {
       const btnStart = document.getElementById('btn-start');
       const btnRestart = document.getElementById('btn-restart');
@@ -600,10 +585,9 @@
         playerName = nameInput.value.trim() || "一甲國小練習生";
         document.getElementById('hud-player-name').innerText = playerName;
 
-        // Request Gyro & Motion Permissions for iOS 13+ Devices
         if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
           try {
-            const orientationPerm = await DeviceOrientationEvent.requestPermission();
+            await DeviceOrientationEvent.requestPermission();
             if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
               await DeviceMotionEvent.requestPermission();
             }
@@ -612,13 +596,11 @@
           }
         }
 
-        // Attach Gyro & Motion Listeners
         if (isMobile) {
           window.addEventListener('deviceorientation', handleGyroscopeOrientation, true);
           window.addEventListener('devicemotion', handleMotionGesture, true);
         }
 
-        // Hide Modal & Start
         document.getElementById('start-modal').classList.add('hidden');
         startGame();
       });
@@ -628,7 +610,6 @@
         startGame();
       });
 
-      // Mouse & Key Controls (PC Backup Mode)
       window.addEventListener('mousedown', (e) => {
         if (!isGameActive || isMobile) return;
         isMouseDown = true;
@@ -640,18 +621,14 @@
         const deltaX = e.clientX - previousMousePosition.x;
         const deltaY = e.clientY - previousMousePosition.y;
 
-        // Intuitive Direction: Turn Right -> Yaw Increases (Scene turns right)
         cameraYaw -= deltaX * 0.0035;
         cameraPitch -= deltaY * 0.003;
-
-        // Pitch Clamping (Avoid extreme flips)
         cameraPitch = Math.max(-Math.PI / 3, Math.min(Math.PI / 3, cameraPitch));
         previousMousePosition = { x: e.clientX, y: e.clientY };
       });
 
       window.addEventListener('mouseup', () => { isMouseDown = false; });
 
-      // Keyboard Controls (Spacebar Shoot Trigger)
       window.addEventListener('keydown', (e) => {
         if (!isGameActive) return;
         if (e.code === 'Space') {
@@ -663,34 +640,28 @@
       });
     }
 
-    // --- Gyroscope Orientation Logic (Intuitive 360-deg Viewing) ---
+    // --- Gyroscope Orientation Logic ---
     function handleGyroscopeOrientation(event) {
       if (!isGameActive) return;
 
-      const alpha = event.alpha ? THREE.MathUtils.degToRad(event.alpha) : 0; // Yaw (0 ~ 360)
-      const beta = event.beta ? THREE.MathUtils.degToRad(event.beta) : 0;   // Pitch (-180 ~ 180)
-      const gamma = event.gamma ? THREE.MathUtils.degToRad(event.gamma) : 0; // Roll (-90 ~ 90)
+      const alpha = event.alpha ? THREE.MathUtils.degToRad(event.alpha) : 0;
+      const beta = event.beta ? THREE.MathUtils.degToRad(event.beta) : 0;
 
       if (initialAlpha === null && event.alpha !== null) {
         initialAlpha = alpha;
       }
 
-      // Smooth Orientation Response
       if (initialAlpha !== null) {
-        // Intuitive Right/Left turn alignment
         cameraYaw = (alpha - initialAlpha);
       }
 
-      // Pitch control clamped for comfort
       cameraPitch = beta - Math.PI / 4; 
       cameraPitch = Math.max(-Math.PI / 3.2, Math.min(Math.PI / 3.2, cameraPitch));
 
-      // Calculate Beta Delta for Flick Shooting
       const currentBeta = event.beta || 0;
       const betaDelta = currentBeta - lastBeta;
       lastBeta = currentBeta;
 
-      // Sensitive Pitch Flick Trigger (Rapid upward movement)
       if (isHoldingBall && !isShooting && betaDelta > 14) {
         shootBasketball();
       }
@@ -703,10 +674,8 @@
       const acc = event.accelerationIncludingGravity || event.acceleration;
       if (!acc) return;
 
-      // Calculate Net Acceleration Vector Magnitude
       const accMagnitude = Math.sqrt((acc.x || 0)**2 + (acc.y || 0)**2 + (acc.z || 0)**2);
 
-      // Low Motion Threshold: Soft upward flick/shake launches ball smoothly
       if (accMagnitude > 22.0) {
         shootBasketball();
       }
@@ -722,19 +691,16 @@
       isShooting = false;
       cameraMode = 'PLAYER';
 
-      // Reset Player Position & Camera View Facing Hoop
       playerPosition.set(0, 1.6, 4.0);
       cameraYaw = 0;
       cameraPitch = 0;
 
-      // Update HUD UI
       document.getElementById('hud').classList.remove('hidden');
       document.getElementById('reticle').classList.remove('hidden');
       document.getElementById('hud-score').innerText = score;
       document.getElementById('hud-balls').innerText = `${ballsRemaining} / ${MAX_BALLS}`;
       updateTimerDisplay();
 
-      // Clear Active Shot Ball
       if (activeShotBall) {
         scene.remove(activeShotBall.mesh);
         activeShotBall = null;
@@ -742,7 +708,9 @@
 
       spawnGroundBasketballs();
 
-      // Start Countdown Timer
+      // Automatically collect nearest ball at start so player starts ready
+      autoPickupNearestBall();
+
       clearInterval(timerInterval);
       timerInterval = setInterval(() => {
         timerSeconds--;
@@ -759,41 +727,56 @@
       document.getElementById('hud-timer').innerText = `${mins}:${secs}`;
     }
 
-    // --- Auto-Pickup & Aiming Raycast Logic ---
-    function updatePickupMechanic(deltaTime) {
+    // --- FIXED & IMPROVED PICKUP MECHANIC ---
+    // Immediate Distance + Raycast Aim Auto-Pickup System
+    function updatePickupMechanic() {
       if (isHoldingBall || isShooting) return;
 
-      // Raycast forward from reticle center direction
-      const raycaster = new THREE.Raycaster();
-      raycaster.setFromCamera(new THREE.Vector2(0, 0.24), camera); // Center-upper reticle alignment
+      const uncollected = basketballs.filter(b => !b.isCollected);
+      if (uncollected.length === 0) return;
 
-      const uncollectedMeshes = basketballs.filter(b => !b.isCollected).map(b => b.mesh);
-      const intersects = raycaster.intersectObjects(uncollectedMeshes);
+      let targetBallToCollect = null;
 
-      if (intersects.length > 0) {
-        const hitMesh = intersects[0].object;
-        const targetBall = basketballs.find(b => b.mesh === hitMesh);
+      // 1. Direct Proximity Check (Nearest ball within 2.5m threshold)
+      for (let ball of uncollected) {
+        const dist = camera.position.distanceTo(ball.mesh.position);
+        if (dist <= PICKUP_RADIUS_DIRECT) {
+          targetBallToCollect = ball;
+          break;
+        }
+      }
 
-        if (targetBall) {
-          // Auto-run forward toward aimed ball
-          const ballPos = hitMesh.position.clone();
-          ballPos.y = playerPosition.y; // Keep vertical height constant
+      // 2. Aim Raycast Check (Within 4.5m if aiming closely)
+      if (!targetBallToCollect) {
+        const raycaster = new THREE.Raycaster();
+        raycaster.setFromCamera(new THREE.Vector2(0, 0.2), camera); // Match reticle
+        const intersects = raycaster.intersectObjects(uncollected.map(b => b.mesh));
 
-          const dist = playerPosition.distanceTo(ballPos);
-
-          if (dist > 0.8) {
-            // Smooth running step towards ball
-            const dir = ballPos.clone().sub(playerPosition).normalize();
-            playerPosition.add(dir.multiplyScalar(PLAYER_SPEED * deltaTime));
-          } else {
-            // Pickup Threshold Met!
-            collectBall(targetBall);
+        if (intersects.length > 0) {
+          const hitMesh = intersects[0].object;
+          const hitBall = uncollected.find(b => b.mesh === hitMesh);
+          if (hitBall && intersects[0].distance <= PICKUP_RADIUS_AIM) {
+            targetBallToCollect = hitBall;
           }
         }
       }
+
+      // Collect ball if any condition matched
+      if (targetBallToCollect) {
+        collectBall(targetBallToCollect);
+      }
     }
 
-    // Collect Ball Event
+    function autoPickupNearestBall() {
+      const uncollected = basketballs.filter(b => !b.isCollected);
+      if (uncollected.length > 0) {
+        // Collect closest ball immediately
+        uncollected.sort((a, b) => camera.position.distanceTo(a.mesh.position) - camera.position.distanceTo(b.mesh.position));
+        collectBall(uncollected[0]);
+      }
+    }
+
+    // Collect Ball Action
     function collectBall(ballObj) {
       ballObj.isCollected = true;
       scene.remove(ballObj.mesh);
@@ -801,11 +784,13 @@
       isHoldingBall = true;
       heldBallMesh.visible = true;
 
-      // Show Shooting Notice Prompt
       const promptEl = document.getElementById('shoot-prompt');
       const promptText = document.getElementById('prompt-text');
-      promptText.innerText = isMobile ? "向上揮動手機投籃！" : "按下 [空白鍵] 或甩動投籃！";
+      promptText.innerText = isMobile ? "已持球！向上揮動手機投籃" : "已持球！按下 [空白鍵] 或甩動投籃";
       promptEl.classList.remove('hidden');
+
+      const hintEl = document.getElementById('reticle-hint');
+      if (hintEl) hintEl.innerText = "已就位！請向上揮動或按空白鍵投籃";
     }
 
     // --- Intuitive Shooting Physics & Trajectory Launch ---
@@ -817,30 +802,27 @@
       heldBallMesh.visible = false;
       document.getElementById('shoot-prompt').classList.add('hidden');
 
+      const hintEl = document.getElementById('reticle-hint');
+      if (hintEl) hintEl.innerText = "靠近或對準籃球即可自動撿起";
+
       ballsRemaining--;
       document.getElementById('hud-balls').innerText = `${ballsRemaining} / ${MAX_BALLS}`;
 
-      // Spawn Active 100% Opaque Shot Physics Ball
       const ballMesh = createBasketballMesh(0.22);
-      
-      // Launch Origin: Front of Camera View
       const launchPos = camera.position.clone().add(camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(0.5));
       launchPos.y -= 0.1;
       ballMesh.position.copy(launchPos);
       scene.add(ballMesh);
 
-      // Calculate Forward Aim Direction
       const aimDir = new THREE.Vector3();
       camera.getWorldDirection(aimDir);
 
-      // Dynamic Arc Velocity Boost
       const forwardPower = 8.5;
       const upwardPower = 4.8;
 
       const velocity = aimDir.clone().multiplyScalar(forwardPower);
-      velocity.y += upwardPower; // Elevate upward trajectory
+      velocity.y += upwardPower;
 
-      // Shot Distance Calculation for Scoring Mode (Inside vs Outside 3-Point Arc)
       const shotDistFromHoop = new THREE.Vector2(launchPos.x, launchPos.z).distanceTo(new THREE.Vector2(rimCenterPos.x, rimCenterPos.z));
       const isThreePointer = shotDistFromHoop >= THREE_POINT_RADIUS;
 
@@ -853,60 +835,56 @@
         alive: true
       };
 
-      // Transition Camera to Smooth Dynamic Follow Mode
       cameraMode = 'FOLLOW_BALL';
     }
 
-    // --- Magnetic Assist & Trajectory Physics Engine ---
+    // --- Physics Engine with Magnetic Assist ---
     function updateShotPhysics(deltaTime) {
       if (!activeShotBall || !activeShotBall.alive) return;
 
       const ball = activeShotBall;
       const pos = ball.mesh.position;
 
-      // Apply Gravity
+      // Gravity
       ball.velocity.y -= 9.8 * deltaTime;
 
-      // Full Magnetic Attraction Assist (Pull vector toward rim center to ensure high score rate)
+      // Magnetic Attraction Assist near rim center
       const distToRim = pos.distanceTo(rimCenterPos);
       if (distToRim < 3.0 && !ball.hasScored) {
         const pullDir = rimCenterPos.clone().sub(pos).normalize();
-        // Gentle magnetic pull acceleration
         const pullStrength = 3.2 * (1.0 - distToRim / 3.0);
         ball.velocity.add(pullDir.multiplyScalar(pullStrength * deltaTime));
       }
 
-      // Position Update
+      // Movement
       pos.add(ball.velocity.clone().multiplyScalar(deltaTime));
 
-      // Ball Self-Rotation
+      // Ball Rotation
       ball.mesh.rotation.x += ball.rotationalVelocity.x * deltaTime;
       ball.mesh.rotation.y += ball.rotationalVelocity.y * deltaTime;
 
-      // 1. Backboard Collision Detection
+      // Backboard Bounce
       if (backboardMesh) {
         const bbBox = new THREE.Box3().setFromObject(backboardMesh);
         const ballSphere = new THREE.Sphere(pos, 0.22);
 
         if (bbBox.intersectsSphere(ballSphere)) {
-          // Rebound Velocity Reflection
-          ball.velocity.z *= -0.65; // Elastic bounce coefficient
+          ball.velocity.z *= -0.65;
           ball.velocity.x += (Math.random() - 0.5) * 0.5;
-          pos.z = bbBox.max.z + 0.23; // Prevent penetration
+          pos.z = bbBox.max.z + 0.23;
         }
       }
 
-      // 2. Score Detection (Ball passing down through rim cylinder)
+      // Scoring Condition
       if (!ball.hasScored && distToRim < 0.38 && Math.abs(pos.y - rimCenterPos.y) < 0.25 && ball.velocity.y < 0) {
         triggerScoreGoal(ball);
       }
 
-      // 3. Ground Collision & Destruction
+      // Ground Touch
       if (pos.y <= 0.22) {
         pos.y = 0.22;
         ball.alive = false;
 
-        // Reset Shot State & Return Camera View to Player
         setTimeout(() => {
           if (activeShotBall) {
             scene.remove(activeShotBall.mesh);
@@ -915,9 +893,11 @@
           isShooting = false;
           cameraMode = 'PLAYER';
 
-          // Check End Condition (All balls shot)
           if (ballsRemaining <= 0) {
             endGame();
+          } else {
+            // Automatically pickup next available ball
+            autoPickupNearestBall();
           }
         }, 300);
       }
@@ -931,7 +911,6 @@
 
       document.getElementById('hud-score').innerText = score;
 
-      // Backboard Golden Flash Effect (`0xffd700`)
       if (backboardMaterial) {
         const origColor = backboardMaterial.color.getHex();
         backboardMaterial.color.setHex(0xffd700);
@@ -942,7 +921,6 @@
         }, 500);
       }
 
-      // Show Toast Notification
       showScoreToast(pts, ball.isThreePointer);
     }
 
@@ -989,49 +967,39 @@
       const deltaTime = clock.getDelta();
 
       if (isGameActive) {
-        // Smooth Semi-transparent Held Ball Spin & Reticle Lock
+        // Held Ball Visual Update
         if (isHoldingBall && heldBallMesh) {
           heldBallMesh.rotation.y += 1.5 * deltaTime;
-
-          // Position held ball directly in front of camera view (50% opaque)
           const camDir = camera.getWorldDirection(new THREE.Vector3());
           const targetHeldPos = camera.position.clone().add(camDir.multiplyScalar(0.75));
           targetHeldPos.y -= 0.18;
           heldBallMesh.position.copy(targetHeldPos);
         }
 
-        // Auto Pickup Mechanic Update
-        updatePickupMechanic(deltaTime);
+        // Check for Auto Pickup
+        updatePickupMechanic();
 
         // Physics Engine Update
         updateShotPhysics(deltaTime);
       }
 
-      // Camera State Router
+      // Camera Position Engine
       updateCameraPosition(deltaTime);
 
-      // Render Three.js Frame
+      // Render
       renderer.render(scene, camera);
     }
 
     // Dynamic Camera Position Engine
     function updateCameraPosition(deltaTime) {
       if (cameraMode === 'PLAYER') {
-        // Normal First/Third Person Hybrid View
         camera.position.copy(playerPosition);
-
-        // Apply Euler Angles (Yaw & Pitch)
         const euler = new THREE.Euler(cameraPitch, cameraYaw, 0, 'YXZ');
         camera.quaternion.setFromEuler(euler);
       } else if (cameraMode === 'FOLLOW_BALL' && activeShotBall) {
-        // Dynamic Follow Camera tracking right behind flying basketball towards hoop
         const ballPos = activeShotBall.mesh.position;
-
-        // Ideal Follow offset: 1.5m behind, 0.6m above
         const targetCamPos = ballPos.clone().add(new THREE.Vector3(0, 0.6, 1.8));
         camera.position.lerp(targetCamPos, 0.12);
-
-        // Camera looks directly at rim center or flying ball
         camera.lookAt(rimCenterPos.clone().add(new THREE.Vector3(0, 0.2, 0)));
       }
     }
