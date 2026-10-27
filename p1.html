@@ -75,6 +75,12 @@
             background-color: rgba(50, 255, 100, 0.9);
         }
 
+        #crosshair.approaching {
+            border-color: rgba(255, 165, 0, 0.9);
+            box-shadow: 0 0 20px rgba(255, 165, 0, 0.6);
+            transform: translate(-50%, -50%) scale(1.1);
+        }
+
         /* 遊戲抬頭顯示器 (HUD) */
         #hud {
             position: absolute;
@@ -257,7 +263,7 @@
     </div>
 
     <!-- 底部狀態提示語 -->
-    <div id="status-msg">請靠近地上的籃球自動撿球</div>
+    <div id="status-msg">請將瞄準紅圈對準地上的籃球</div>
 
     <!-- 視窗 1: 輸入姓名 Modal -->
     <div id="modal-name" class="modal-overlay">
@@ -307,12 +313,11 @@
             courtWidth: 10,
             courtLength: 12,
             rimHeight: 2.5,
-            rimZ: -5.5, // 主要瞄準籃框 (Z負方向)
+            rimZ: -5.5, // 主要瞄準前方籃框 (Z負方向)
             threePointRadius: 5.0,
             totalBalls: 30,
             gameDuration: 180, // 秒
-            pickupDistance: 2.5, // 靠近自動撿球距離
-            aimPickupDistance: 4.5 // 瞄準輔助撿球距離
+            jogSpeed: 3.8      // 慢跑靠近速度 (米/秒)
         };
 
         let gameState = {
@@ -323,7 +328,6 @@
             isGameActive: false,
             isHoldingBall: false,
             isBallInFlight: false,
-            currentBall: null,
             timerInterval: null,
             isMobile: false
         };
@@ -341,13 +345,13 @@
         let isMouseDown = false;
         let previousMousePosition = { x: 0, y: 0 };
         
-        // 陀螺儀/加速度數據
-        let gyroBase = { alpha: null, beta: null, gamma: null };
+        // 玩家相機位置 (支援慢跑移動)
+        let playerPos = new THREE.Vector3(0, 1.6, 5);
+        let targetApproachBall = null; // 當前瞄準並正在慢跑靠近的球
+
+        // 陀螺儀數據
         let lastMotionTime = 0;
         let lastBeta = 0;
-
-        // 相機預設位置 (玩家站在 0, 1.6, 5)
-        const playerPos = new THREE.Vector3(0, 1.6, 5);
 
         // --- DOM 元素引用 ---
         const hudName = document.getElementById('hud-name');
@@ -364,7 +368,6 @@
             setupEventListeners();
         });
 
-        // 檢測是否為行動裝置/iPad
         function checkMobile() {
             gameState.isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
                 (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -374,14 +377,12 @@
         function initThreeJS() {
             const container = document.getElementById('canvas-container');
 
-            // 1. Scene & Camera
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x000000); // 黑夜背景
+            scene.background = new THREE.Color(0x000000);
 
             camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
             camera.position.copy(playerPos);
 
-            // 2. Renderer
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -389,7 +390,6 @@
             renderer.shadowMap.type = THREE.PCFSoftShadowMap;
             container.appendChild(renderer.domElement);
 
-            // 3. 燈光配置
             const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
             scene.add(ambientLight);
 
@@ -400,22 +400,16 @@
             dirLight.shadow.mapSize.height = 1024;
             scene.add(dirLight);
 
-            // 4. 建構場景元件
             createEnvironment();
             createBasketballCourt();
             createHoops();
             createHeldBallDisplay();
 
-            // 視窗調整響應
             window.addEventListener('resize', onWindowResize);
-
-            // 啟動渲染循環
             animate();
         }
 
-        // 建構場外環境
         function createEnvironment() {
-            // 深綠色草地
             const grassGeo = new THREE.PlaneGeometry(80, 80);
             const grassMat = new THREE.MeshStandardMaterial({ color: 0x113311, roughness: 0.9 });
             const grass = new THREE.Mesh(grassGeo, grassMat);
@@ -425,11 +419,9 @@
             scene.add(grass);
         }
 
-        // 建構標準 10m x 12m 極深藍色球場
         function createBasketballCourt() {
             const courtGroup = new THREE.Group();
 
-            // 極深藍色地面 #030f26
             const courtGeo = new THREE.PlaneGeometry(CONFIG.courtWidth, CONFIG.courtLength);
             const courtMat = new THREE.MeshStandardMaterial({ color: 0x030f26, roughness: 0.4, metalness: 0.1 });
             const court = new THREE.Mesh(courtGeo, courtMat);
@@ -437,7 +429,6 @@
             court.receiveShadow = true;
             courtGroup.add(court);
 
-            // 白色邊線與標線 Texture Canvas
             const canvas = document.createElement('canvas');
             canvas.width = 1024;
             canvas.height = 1228;
@@ -449,31 +440,24 @@
             ctx.strokeStyle = '#ffffff';
             ctx.lineWidth = 12;
 
-            // 外圍邊線
             ctx.strokeRect(20, 20, canvas.width - 40, canvas.height - 40);
-            // 中線
             ctx.beginPath();
             ctx.moveTo(20, canvas.height / 2);
             ctx.lineTo(canvas.width - 20, canvas.height / 2);
             ctx.stroke();
 
-            // 中央圓圈
             ctx.beginPath();
             ctx.arc(canvas.width / 2, canvas.height / 2, 80, 0, Math.PI * 2);
             ctx.stroke();
 
-            // 兩端三分線 (5米半徑 -> 比例繪製)
             const r3p = (5.0 / CONFIG.courtLength) * canvas.height;
-            // 前端三分線 (Z負)
             ctx.beginPath();
             ctx.arc(canvas.width / 2, 20, r3p, 0, Math.PI);
             ctx.stroke();
-            // 後端三分線 (Z正)
             ctx.beginPath();
             ctx.arc(canvas.width / 2, canvas.height - 20, r3p, Math.PI, Math.PI * 2);
             ctx.stroke();
 
-            // 禁區 (罰球區)
             const keyW = (3.6 / CONFIG.courtWidth) * canvas.width;
             const keyH = (4.0 / CONFIG.courtLength) * canvas.height;
             ctx.strokeRect((canvas.width - keyW) / 2, 20, keyW, keyH);
@@ -489,25 +473,19 @@
             scene.add(courtGroup);
         }
 
-        // 建構籃框與籃板 (前/後兩端)
         function createHoops() {
-            // 建構單個籃球架
             function buildHoop(zPos, isFront) {
                 const hoopGroup = new THREE.Group();
                 hoopGroup.position.set(0, 0, zPos);
                 if (!isFront) hoopGroup.rotation.y = Math.PI;
 
-                // 1. 籃柱 (黑色金屬)
                 const poleGeo = new THREE.CylinderGeometry(0.1, 0.1, 3.5, 16);
                 const poleMat = new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.8 });
                 const pole = new THREE.Mesh(poleGeo, poleMat);
                 pole.position.set(0, 1.75, -0.6);
                 hoopGroup.add(pole);
 
-                // 2. 籃板 (高度 2.5m 中心)
                 const boardGeo = new THREE.BoxGeometry(1.8, 1.05, 0.05);
-                
-                // 籃板 Canvas 材質 (純白底 + 紅色外框 + 紅框中心)
                 const bCanvas = document.createElement('canvas');
                 bCanvas.width = 512;
                 bCanvas.height = 300;
@@ -517,7 +495,7 @@
                 bCtx.strokeStyle = '#ff2200';
                 bCtx.lineWidth = 16;
                 bCtx.strokeRect(10, 10, 492, 280);
-                bCtx.strokeRect(180, 140, 152, 110); // 小框
+                bCtx.strokeRect(180, 140, 152, 110);
 
                 const boardTex = new THREE.CanvasTexture(bCanvas);
                 const boardMat = new THREE.MeshStandardMaterial({ map: boardTex, roughness: 0.3 });
@@ -525,7 +503,6 @@
                 board.position.set(0, 2.7, -0.025);
                 hoopGroup.add(board);
 
-                // 3. 橘紅色金屬籃圈 (離地 2.5m)
                 const rimGeo = new THREE.TorusGeometry(0.23, 0.02, 16, 32);
                 const rimMat = new THREE.MeshStandardMaterial({ color: 0xff4500, metalness: 0.6, roughness: 0.3 });
                 const rim = new THREE.Mesh(rimGeo, rimMat);
@@ -533,14 +510,12 @@
                 rim.position.set(0, CONFIG.rimHeight, 0.23);
                 hoopGroup.add(rim);
 
-                // 4. 白色籃網 (圓柱網狀幾何)
                 const netGeo = new THREE.CylinderGeometry(0.23, 0.15, 0.4, 12, 1, true);
                 const netMat = new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true, transparent: true, opacity: 0.7 });
                 const net = new THREE.Mesh(netGeo, netMat);
                 net.position.set(0, CONFIG.rimHeight - 0.2, 0.23);
                 hoopGroup.add(net);
 
-                // 金黃色進球閃爍點光源
                 const light = new THREE.PointLight(0xffd700, 0, 5);
                 light.position.set(0, CONFIG.rimHeight + 0.5, 0.23);
                 hoopGroup.add(light);
@@ -554,39 +529,36 @@
                 }
             }
 
-            buildHoop(-CONFIG.courtLength / 2, true);  // 前端主籃框 (Z = -6)
-            buildHoop(CONFIG.courtLength / 2, false);  // 後端籃框 (Z = +6)
+            buildHoop(-CONFIG.courtLength / 2, true);
+            buildHoop(CONFIG.courtLength / 2, false);
         }
 
-        // 創建持球狀態顯示用籃球 (附於鏡頭前)
         function createHeldBallDisplay() {
             const ballGeo = new THREE.SphereGeometry(0.22, 32, 32);
             const ballMat = createBasketballMaterial();
             ballMat.transparent = true;
-            ballMat.opacity = 0.5; // 50% 半透明
+            ballMat.opacity = 0.5;
 
             heldBallDisplayMesh = new THREE.Mesh(ballGeo, ballMat);
             heldBallDisplayMesh.visible = false;
             scene.add(heldBallDisplayMesh);
         }
 
-        // 生成籃球紋理材質
         function createBasketballMaterial() {
             const canvas = document.createElement('canvas');
             canvas.width = 512;
             canvas.height = 256;
             const ctx = canvas.getContext('2d');
 
-            ctx.fillStyle = '#d9531e'; // 籃球橘色
+            ctx.fillStyle = '#d9531e';
             ctx.fillRect(0, 0, 512, 256);
 
-            // 黑色溝紋
             ctx.strokeStyle = '#111111';
             ctx.lineWidth = 8;
 
             ctx.beginPath();
-            ctx.moveTo(0, 128); ctx.lineTo(512, 128); // 橫線
-            ctx.moveTo(256, 0); ctx.lineTo(256, 256); // 直線
+            ctx.moveTo(0, 128); ctx.lineTo(512, 128);
+            ctx.moveTo(256, 0); ctx.lineTo(256, 256);
             ctx.stroke();
 
             ctx.beginPath();
@@ -598,9 +570,7 @@
             return new THREE.MeshStandardMaterial({ map: texture, roughness: 0.6, metalness: 0.1 });
         }
 
-        // 散布 30 顆籃球於半場內
         function spawnFieldBalls() {
-            // 清除現有球體
             ballsArray.forEach(b => scene.remove(b));
             ballsArray = [];
 
@@ -609,7 +579,6 @@
 
             for (let i = 0; i < CONFIG.totalBalls; i++) {
                 const mesh = new THREE.Mesh(ballGeo, ballMat);
-                // 隨機散布在 X: -4 ~ 4, Z: -4.5 ~ 3.5 的半場內
                 const rx = (Math.random() - 0.5) * (CONFIG.courtWidth - 1.5);
                 const rz = (Math.random() - 0.5) * (CONFIG.courtLength * 0.75);
                 mesh.position.set(rx, 0.22, rz);
@@ -621,9 +590,8 @@
             }
         }
 
-        // --- 事件與使用者操作控制 ---
+        // --- 事件控制 ---
         function setupEventListeners() {
-            // 視窗 1：進入遊戲
             document.getElementById('btn-start-name').addEventListener('click', () => {
                 const nameInput = document.getElementById('input-player-name').value.trim();
                 if (nameInput) gameState.playerName = nameInput;
@@ -638,19 +606,16 @@
                 }
             });
 
-            // 視窗 2：iOS / 行動裝置授權
             document.getElementById('btn-grant-sensors').addEventListener('click', () => {
                 requestDeviceSensors();
             });
 
-            // 視窗 3：重新開始
             document.getElementById('btn-restart').addEventListener('click', () => {
                 document.getElementById('modal-result').classList.add('hidden');
                 resetGame();
                 startGame();
             });
 
-            // PC 控制：滑鼠拖曳視角
             window.addEventListener('mousedown', (e) => {
                 if (!gameState.isGameActive || gameState.isMobile) return;
                 isMouseDown = true;
@@ -662,10 +627,8 @@
                 const deltaX = e.clientX - previousMousePosition.x;
                 const deltaY = e.clientY - previousMousePosition.y;
 
-                // 左右轉動方向修正：滑鼠向右 -> 視角向右 (Yaw 減少)
                 cameraRotation.yaw -= deltaX * 0.003;
                 cameraRotation.pitch -= deltaY * 0.003;
-                // 俯仰角限制 (-80度 ~ +80度)
                 cameraRotation.pitch = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, cameraRotation.pitch));
 
                 previousMousePosition = { x: e.clientX, y: e.clientY };
@@ -673,16 +636,14 @@
 
             window.addEventListener('mouseup', () => { isMouseDown = false; });
 
-            // PC 控制：空白鍵投籃
             window.addEventListener('keydown', (e) => {
                 if (e.code === 'Space' && gameState.isGameActive && gameState.isHoldingBall && !gameState.isBallInFlight) {
                     e.preventDefault();
-                    shootBall(14.0); // 預設標準投籃力道
+                    shootBall(14.0);
                 }
             });
         }
 
-        // 請求 iOS 陀螺儀與動態授權
         function requestDeviceSensors() {
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                 DeviceOrientationEvent.requestPermission()
@@ -697,41 +658,27 @@
                     })
                     .catch(console.error);
             } else {
-                // 一般 Android 或不需授權的裝置
                 bindMobileSensors();
                 document.getElementById('modal-auth').classList.add('hidden');
                 startGame();
             }
         }
 
-        // 綁定陀螺儀與加速度感應器
         function bindMobileSensors() {
-            // 1. 陀螺儀全視角控制
             window.addEventListener('deviceorientation', (e) => {
                 if (!gameState.isGameActive) return;
 
-                // 初始化基準角
-                if (gyroBase.alpha === null && e.alpha !== null) {
-                    gyroBase.alpha = e.alpha;
-                    gyroBase.beta = e.beta;
-                    gyroBase.gamma = e.gamma;
-                }
+                const beta = e.beta || 0;
+                const gamma = e.gamma || 0;
 
-                // 轉為弧度並修正方向
-                // beta: 俯仰角, gamma/alpha: 旋轉角
-                const beta = e.beta || 0;  // -180 ~ 180
-                const gamma = e.gamma || 0; // -90 ~ 90
-
-                // 畫面左右轉動直覺修正
                 cameraRotation.yaw = THREE.MathUtils.degToRad(-gamma * 1.5);
                 cameraRotation.pitch = THREE.MathUtils.degToRad((beta - 45) * 1.2);
                 cameraRotation.pitch = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, cameraRotation.pitch));
 
-                // 檢測快速向上仰起甩動投籃 (Beta delta)
                 const now = Date.now();
                 if (now - lastMotionTime > 80) {
                     const deltaBeta = beta - lastBeta;
-                    if (deltaBeta > 18 && gameState.isHoldingBall && !gameState.isBallInFlight) { // 降低門檻，輕鬆觸發
+                    if (deltaBeta > 18 && gameState.isHoldingBall && !gameState.isBallInFlight) {
                         const force = Math.min(22, 12 + deltaBeta * 0.3);
                         shootBall(force);
                     }
@@ -740,22 +687,17 @@
                 }
             }, true);
 
-            // 2. 加速度體感甩動投籃
             window.addEventListener('devicemotion', (e) => {
                 if (!gameState.isGameActive || !gameState.isHoldingBall || gameState.isBallInFlight) return;
-
                 const acc = e.accelerationIncludingGravity;
                 if (!acc) return;
-
                 const accMagnitude = Math.sqrt(acc.x * acc.x + acc.y * acc.y + acc.z * acc.z);
-                // 當向上/向前快速甩動時觸發
-                if (accMagnitude > 22) { // 大幅降低門檻
+                if (accMagnitude > 22) {
                     shootBall(Math.min(24, accMagnitude * 0.7));
                 }
             }, true);
         }
 
-        // --- 遊戲流程邏輯 ---
         function startGame() {
             gameState.isGameActive = true;
             startTimer();
@@ -769,6 +711,8 @@
             gameState.timeLeft = CONFIG.gameDuration;
             gameState.isHoldingBall = false;
             gameState.isBallInFlight = false;
+            playerPos.set(0, 1.6, 5);
+            targetApproachBall = null;
             if (activeBallMesh) {
                 scene.remove(activeBallMesh);
                 activeBallMesh = null;
@@ -802,81 +746,95 @@
             gameState.isGameActive = false;
             if (gameState.timerInterval) clearInterval(gameState.timerInterval);
 
-            // 顯示結算 Modal
             document.getElementById('res-name').textContent = gameState.playerName;
             document.getElementById('res-score').textContent = `${gameState.score} 分`;
             document.getElementById('res-balls').textContent = `${CONFIG.totalBalls - gameState.ballsLeft} / ${CONFIG.totalBalls}`;
             document.getElementById('modal-result').classList.remove('hidden');
         }
 
-        // --- 核心撿球機制 (靠近/瞄準自動吸附) ---
-        function checkBallPickup() {
-            if (gameState.isHoldingBall || gameState.isBallInFlight || !gameState.isGameActive) return;
-
-            // 計算視線射線 (Raycaster)
-            const raycaster = new THREE.Raycaster();
-            raycaster.setFromCamera(new THREE.Vector2(0, 0.24), camera); // 對準中央瞄準圈
-
-            let closestBall = null;
-            let minDistance = Infinity;
-
-            for (let i = 0; i < ballsArray.length; i++) {
-                const ball = ballsArray[i];
-                const distToPlayer = camera.position.distanceTo(ball.position);
-
-                // 條件 A: 距離足夠近 (< 2.5米)
-                // 條件 B: 在視線方向附近且距離 (< 4.5米)
-                if (distToPlayer < CONFIG.pickupDistance) {
-                    if (distToPlayer < minDistance) {
-                        minDistance = distToPlayer;
-                        closestBall = ball;
-                    }
-                } else if (distToPlayer < CONFIG.aimPickupDistance) {
-                    const intersects = raycaster.intersectObject(ball);
-                    if (intersects.length > 0 && distToPlayer < minDistance) {
-                        minDistance = distToPlayer;
-                        closestBall = ball;
-                    }
-                }
+        // --- 瞄準自動慢跑與撿球機制 ---
+        function updateBallApproach(delta) {
+            if (gameState.isHoldingBall || gameState.isBallInFlight || !gameState.isGameActive) {
+                targetApproachBall = null;
+                crosshair.classList.remove('approaching');
+                return;
             }
 
-            // 觸發撿球
-            if (closestBall) {
-                pickupBall(closestBall);
+            // 用 Raycaster 檢測瞄準中心點對到的球
+            const raycaster = new THREE.Raycaster();
+            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+            const intersects = raycaster.intersectObjects(ballsArray);
+
+            if (intersects.length > 0) {
+                targetApproachBall = intersects[0].object;
+                crosshair.classList.add('approaching');
+                statusMsg.textContent = "🏃 正在慢跑靠近籃球...";
+            } else if (!targetApproachBall) {
+                crosshair.classList.remove('approaching');
+                statusMsg.textContent = "請將紅色瞄準圈對準地上的籃球";
+            }
+
+            // 若已有鎖定的球，自動慢跑靠近
+            if (targetApproachBall) {
+                // 若該球已被移除防呆
+                if (!ballsArray.includes(targetApproachBall)) {
+                    targetApproachBall = null;
+                    return;
+                }
+
+                const ballPos = targetApproachBall.position;
+                const playerXZ = new THREE.Vector3(playerPos.x, 0, playerPos.z);
+                const ballXZ = new THREE.Vector3(ballPos.x, 0, ballPos.z);
+                const dist = playerXZ.distanceTo(ballXZ);
+
+                // 當靠近至 0.6 米以內，判定撿起
+                if (dist < 0.6) {
+                    const picked = targetApproachBall;
+                    targetApproachBall = null;
+                    crosshair.classList.remove('approaching');
+                    pickupBall(picked);
+                } else {
+                    // 以慢跑速度向該球平滑移動
+                    const dir = ballXZ.sub(playerXZ).normalize();
+                    playerPos.x += dir.x * CONFIG.jogSpeed * delta;
+                    playerPos.z += dir.z * CONFIG.jogSpeed * delta;
+
+                    // 邊界限制在球場內
+                    playerPos.x = Math.max(-CONFIG.courtWidth/2 + 0.5, Math.min(CONFIG.courtWidth/2 - 0.5, playerPos.x));
+                    playerPos.z = Math.max(-CONFIG.courtLength/2 + 0.5, Math.min(CONFIG.courtLength/2 - 0.5, playerPos.z));
+                }
             }
         }
 
         function pickupBall(ballMesh) {
             gameState.isHoldingBall = true;
             
-            // 從地面陣列移除該球
             const idx = ballsArray.indexOf(ballMesh);
             if (idx > -1) ballsArray.splice(idx, 1);
             scene.remove(ballMesh);
 
-            // 啟用持球 UI 視覺
             heldBallDisplayMesh.visible = true;
             crosshair.classList.add('holding');
             statusMsg.textContent = "🎯 已持球！向上甩動手機或按 [空白鍵] 投籃";
         }
 
-        // --- 投籃與拋物線物理系統 ---
+        // --- 投籃與拋物線物理 ---
         function shootBall(speedForce) {
             gameState.isHoldingBall = false;
             gameState.isBallInFlight = true;
+            targetApproachBall = null;
             heldBallDisplayMesh.visible = false;
             crosshair.classList.remove('holding');
+            crosshair.classList.remove('approaching');
 
             gameState.ballsLeft--;
             updateHUD();
 
-            // 創建真實投出的籃球
             const ballGeo = new THREE.SphereGeometry(0.22, 32, 32);
             const ballMat = createBasketballMaterial();
             activeBallMesh = new THREE.Mesh(ballGeo, ballMat);
             activeBallMesh.castShadow = true;
             
-            // 起始位置設在鏡頭前下方
             const spawnPos = camera.position.clone();
             const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
             spawnPos.add(forward.clone().multiplyScalar(0.6));
@@ -884,13 +842,11 @@
             activeBallMesh.position.copy(spawnPos);
             scene.add(activeBallMesh);
 
-            // 判定三分線/二分線投籃 (距離前方籃框中心)
             const distToRim = new THREE.Vector2(spawnPos.x, spawnPos.z).distanceTo(new THREE.Vector2(0, CONFIG.rimZ));
             const is3Point = distToRim > CONFIG.threePointRadius;
 
-            // 計算初速度向量 (向前 + 向上)
             const velocity = forward.clone().multiplyScalar(speedForce * 0.7);
-            velocity.y += Math.max(4.0, speedForce * 0.4); // 給予穩定的拋物線仰角
+            velocity.y += Math.max(4.0, speedForce * 0.4);
 
             activeBallPhysics = {
                 vel: velocity,
@@ -902,70 +858,55 @@
             statusMsg.textContent = is3Point ? "🔥 三分球出手！" : "🏀 兩分球出手！";
         }
 
-        // 物理運動與全程磁吸進球輔助更新
         function updatePhysics(delta) {
             if (!activeBallPhysics.active || !activeBallMesh) return;
 
             const pos = activeBallMesh.position;
             const vel = activeBallPhysics.vel;
 
-            // 1. 套用重力加速度
             vel.y -= 9.8 * delta;
 
-            // 2. ⭐ 全程磁吸進球輔助機制 (僅對前方主籃框生效) ⭐
-            // 籃框目標中心點 (0, 2.5, -5.77)
+            // 前方主籃框磁吸輔助
             const targetRimPos = new THREE.Vector3(0, CONFIG.rimHeight, CONFIG.rimZ - 0.23);
             const distToTarget = pos.distanceTo(targetRimPos);
 
-            // 當球體靠近籃框範圍 (3.5 米內) 且尚未過度低於籃框時，提供柔和的磁吸力導向
             if (distToTarget < 3.5 && pos.z < 0) {
                 const attractDir = targetRimPos.clone().sub(pos).normalize();
-                // 磁吸強度隨距離越近適度增強 (自然修正，不亂姿態)
                 const forceMagnitude = Math.max(0, (3.5 - distToTarget) * 2.2);
                 vel.add(attractDir.multiplyScalar(forceMagnitude * delta));
             }
 
-            // 3. 更新位置
             pos.add(vel.clone().multiplyScalar(delta));
-
-            // 球體自轉
             activeBallMesh.rotation.x += 3 * delta;
 
-            // 4. 碰撞檢測 - 籃板擦板反彈
-            const boardZ = -CONFIG.courtLength / 2 - 0.025; // -6.025
+            const boardZ = -CONFIG.courtLength / 2 - 0.025;
             if (Math.abs(pos.z - boardZ) < 0.25 && pos.y > 2.2 && pos.y < 3.2 && Math.abs(pos.x) < 0.9) {
-                vel.z = Math.abs(vel.z) * 0.65; // 反彈
+                vel.z = Math.abs(vel.z) * 0.65;
                 vel.x *= 0.8;
                 pos.z = boardZ + 0.26;
             }
 
-            // 5. 碰撞與進球判定
             if (!activeBallPhysics.hasScored) {
-                // 當球體穿過籃框中心區域 (半徑 0.3 米，高度 2.45m~2.55m)
                 const rimCenter = new THREE.Vector3(0, CONFIG.rimHeight, CONFIG.rimZ - 0.23);
                 const horizDist = new THREE.Vector2(pos.x - rimCenter.x, pos.z - rimCenter.z).length();
 
                 if (horizDist < 0.35 && Math.abs(pos.y - rimCenter.y) < 0.25 && vel.y < 0) {
-                    // 觸發進球！
                     activeBallPhysics.hasScored = true;
                     const pts = activeBallPhysics.is3Point ? 3 : 2;
                     gameState.score += pts;
                     updateHUD();
 
-                    // 金黃色光芒閃爍 1 次
                     triggerRimFlash();
                     statusMsg.textContent = `🎉 空心進球！ +${pts} 分！`;
                 }
             }
 
-            // 6. 落地銷毀與視角重置
             if (pos.y <= 0.22) {
                 pos.y = 0.22;
                 destroyActiveBall();
             }
         }
 
-        // 籃框金黃色閃爍特效
         function triggerRimFlash() {
             frontRimLight.intensity = 3.5;
             setTimeout(() => {
@@ -973,7 +914,6 @@
             }, 400);
         }
 
-        // 銷毀投出的球並重置視角
         function destroyActiveBall() {
             activeBallPhysics.active = false;
             if (activeBallMesh) {
@@ -982,27 +922,25 @@
             }
             gameState.isBallInFlight = false;
 
-            // 檢查是否比賽結束 (30顆球用盡)
             if (gameState.ballsLeft <= 0) {
                 endGame();
             } else {
-                statusMsg.textContent = "請靠近地上的籃球自動撿球";
+                statusMsg.textContent = "請將瞄準紅圈對準地上的籃球";
             }
         }
 
-        // --- 動態鏡頭跟隨與視角更新 ---
+        // --- 鏡頭跟隨與更新 ---
         function updateCamera() {
             if (gameState.isBallInFlight && activeBallMesh) {
-                // 🎯 鏡頭跟隨模式：平滑切換至球體正後方
                 const ballPos = activeBallMesh.position.clone();
                 const targetCamPos = ballPos.clone().add(new THREE.Vector3(0, 0.8, 1.8));
                 camera.position.lerp(targetCamPos, 0.12);
                 camera.lookAt(ballPos);
             } else {
-                // 🧍 玩家第一人稱視角模式
-                camera.position.lerp(playerPos, 0.1);
+                const headPos = playerPos.clone();
+                headPos.y = 1.6;
+                camera.position.lerp(headPos, 0.1);
 
-                // 依據 cameraRotation 計算 LookAt 目標 point
                 const target = new THREE.Vector3(
                     camera.position.x + Math.sin(cameraRotation.yaw) * Math.cos(cameraRotation.pitch),
                     camera.position.y + Math.sin(cameraRotation.pitch),
@@ -1010,26 +948,23 @@
                 );
                 camera.lookAt(target);
 
-                // 更新持球時籃球於畫面中央前方的自轉與位置
                 if (gameState.isHoldingBall && heldBallDisplayMesh) {
                     const heldPos = camera.position.clone();
                     const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
                     heldPos.add(forward.multiplyScalar(0.7));
                     heldPos.y -= 0.22;
                     heldBallDisplayMesh.position.copy(heldPos);
-                    heldBallDisplayMesh.rotation.y += 0.01; // 緩慢自轉
+                    heldBallDisplayMesh.rotation.y += 0.01;
                 }
             }
         }
 
-        // 視窗 resize 處理
         function onWindowResize() {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         }
 
-        // --- 主渲染動畫循環 ---
         let lastFrameTime = performance.now();
         function animate() {
             requestAnimationFrame(animate);
@@ -1039,7 +974,7 @@
             lastFrameTime = now;
 
             if (gameState.isGameActive) {
-                checkBallPickup();
+                updateBallApproach(delta);
                 updatePhysics(delta);
             }
 
