@@ -410,6 +410,8 @@
         let hasReceivedGyroData = false;
         const deviceOrientationData = { alpha: 0, beta: 90, gamma: 0 };
         let screenOrientationAngle = 0;
+        let gyroYawOffset = 0;
+        let gyroYawCalibrated = false;
 
         // 陀螺儀「明確推球動作」偵測變數（避免抬頭或轉身誤投）
         const PICKUP_STABILIZE_MS = 650; // 撿球後 0.65 秒防誤觸穩定冷卻時間
@@ -1153,6 +1155,8 @@
         const _euler = new THREE.Euler();
         const _q0 = new THREE.Quaternion();
         const _q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5)); // -PI/2 around X
+        const _qTemp = new THREE.Quaternion();
+        const _vForward = new THREE.Vector3();
 
         function updateScreenOrientationAngle() {
             if (window.screen && window.screen.orientation && typeof window.screen.orientation.angle === 'number') {
@@ -1168,13 +1172,29 @@
             const alpha = THREE.MathUtils.degToRad(deviceOrientationData.alpha || 0);
             const beta = THREE.MathUtils.degToRad(deviceOrientationData.beta || 0);
             const gamma = THREE.MathUtils.degToRad(deviceOrientationData.gamma || 0);
-            const orient = THREE.MathUtils.degToRad(screenOrientationAngle || 0);
 
-            // 標準 W3C 陀螺儀轉 Three.js 右手座標系：向右轉動時 alpha 減小 -> 相機向右轉動，完全符合直覺且支援 360 度無角度限制
+            // 1. 計算 iPad 螢幕背面朝向世界的 3D 法線向量（不套用會造成畫面橫轉 90 度的 Z 軸旋轉）
             _euler.set(beta, alpha, -gamma, 'YXZ');
+            _qTemp.setFromEuler(_euler);
+            _qTemp.multiply(_q1);
+
+            _vForward.set(0, 0, -1).applyQuaternion(_qTemp);
+
+            // 2. 由 3D 視線向量提取水平方位角 (rawYaw) 與垂直俯仰角 (rawPitch)，避免垂直握持時 Gimbal Lock 跳動
+            const rawYaw = Math.atan2(-_vForward.x, -_vForward.z);
+            const rawPitch = Math.asin(THREE.MathUtils.clamp(_vForward.y, -0.98, 0.98));
+
+            // 3. 自動校準初始水平方向，確保遊戲開始時正對前方籃框，不會往左偏轉 90 度
+            if (!gyroYawCalibrated) {
+                gyroYawOffset = rawYaw;
+                gyroYawCalibrated = true;
+            }
+
+            const finalYaw = rawYaw - gyroYawOffset;
+
+            // 4. 強制鎖定相機橫滾角 Roll = 0（與投出後的 lookAt 視角完全一致，畫面永遠正向水平不歪斜）
+            _euler.set(rawPitch, finalYaw, 0, 'YXZ');
             targetQuat.setFromEuler(_euler);
-            targetQuat.multiply(_q1);
-            targetQuat.multiply(_q0.setFromAxisAngle(_zee, -orient));
         }
 
         // --- PC 滑鼠拖曳四元數計算（支援 360 度旋轉與俯仰，向右拖曳視角右移） ---
@@ -1740,11 +1760,13 @@
             hudBalls.textContent = String(TOTAL_BALLS);
             updateTimerDisplay();
 
-            // 重置玩家初始站位
+            // 重置玩家初始站位與陀螺儀正前方校準
             playerPos.set(0, PLAYER_EYE_HEIGHT, 1.8);
             camera.position.copy(playerPos);
+            camera.up.set(0, 1, 0);
             pcYaw = 0;
             pcPitch = 0.04;
+            gyroYawCalibrated = false;
             setActiveHoop(0);
 
             spawnThirtyBasketballs();
