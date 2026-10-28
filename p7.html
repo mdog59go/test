@@ -77,25 +77,33 @@
         }
         #aim-reticle::before {
             width: 28px;
-            height: 3.5px;
+            height: 3px;
         }
         #aim-reticle::after {
-            width: 3.5px;
+            width: 3px;
             height: 28px;
         }
 
-        /* 頂部純資訊 HUD（不可點擊、無任何操控按鈕） */
+        /* 頂部純資訊 HUD（針對 iPad 直式畫面最佳化排版，不可點擊、無任何操控按鈕） */
         #hud-overlay {
             position: fixed;
             top: 0;
             left: 0;
             width: 100%;
-            padding: 14px 20px;
+            padding: 12px 14px;
             z-index: 15;
             pointer-events: none;
             display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
+            flex-direction: column;
+            gap: 10px;
+        }
+        @media (min-width: 768px) and (orientation: landscape) {
+            #hud-overlay {
+                flex-direction: row;
+                justify-content: space-between;
+                align-items: flex-start;
+                padding: 14px 20px;
+            }
         }
 
         /* 進球得分飄字動畫 */
@@ -135,29 +143,33 @@
     <!-- 3D 渲染容器 -->
     <div id="canvas-container"></div>
 
-    <!-- 中央偏上加大紅色瞄準圈（附中心十字，純視覺非按鈕） -->
+    <!-- 畫面中間偏上的加大紅色瞄準圈（中心有十字） -->
     <div id="aim-reticle" class="hidden"></div>
 
-    <!-- 遊戲資訊狀態列（純資訊顯示，絕無任何操控按鈕） -->
+    <!-- 遊戲資訊狀態列（純資訊顯示，針對 iPad 直式排版最佳化，絕無任何操控按鈕） -->
     <div id="hud-overlay" class="hidden">
-        <div class="bg-slate-950/75 backdrop-blur-md border border-blue-500/30 rounded-2xl px-4 py-2.5 text-white shadow-xl">
-            <div class="text-xs text-blue-300 font-semibold tracking-wider">PLAYER 練習生</div>
-            <div id="hud-player-name" class="text-base md:text-lg font-extrabold text-amber-300 truncate max-w-[160px] md:max-w-[240px]">一甲國小練習生</div>
-            <div id="hud-status-hint" class="text-xs text-emerald-300 mt-0.5 font-medium">紅圈對準地面籃球自動慢跑撿球</div>
+        <div class="w-full flex items-center justify-between gap-2 bg-slate-950/80 backdrop-blur-md border border-blue-500/30 rounded-2xl px-4 py-2.5 text-white shadow-xl">
+            <div class="min-w-0">
+                <div class="text-[11px] text-blue-300 font-semibold tracking-wider">PLAYER 練習生（iPad 直式體感）</div>
+                <div id="hud-player-name" class="text-base md:text-lg font-extrabold text-amber-300 truncate">一甲國小練習生</div>
+            </div>
+            <div id="hud-status-hint" class="text-xs md:text-sm text-emerald-300 font-bold text-right shrink-0 bg-emerald-950/60 border border-emerald-500/30 px-3 py-1.5 rounded-xl">
+                紅圈對準地面籃球自動慢跑撿球
+            </div>
         </div>
 
-        <div class="flex gap-2.5 md:gap-4">
-            <div class="bg-slate-950/75 backdrop-blur-md border border-amber-500/40 rounded-2xl px-4 py-2 text-center shadow-xl min-w-[82px]">
+        <div class="grid grid-cols-3 gap-2.5 w-full">
+            <div class="bg-slate-950/80 backdrop-blur-md border border-amber-500/40 rounded-2xl px-3 py-2 text-center shadow-xl">
                 <div class="text-[11px] text-amber-200/90 font-semibold">得分 SCORE</div>
                 <div id="hud-score" class="text-2xl md:text-3xl font-black text-amber-400">0</div>
             </div>
-            <div class="bg-slate-950/75 backdrop-blur-md border border-orange-500/40 rounded-2xl px-4 py-2 text-center shadow-xl min-w-[82px]">
+            <div class="bg-slate-950/80 backdrop-blur-md border border-orange-500/40 rounded-2xl px-3 py-2 text-center shadow-xl">
                 <div class="text-[11px] text-orange-200/90 font-semibold">剩餘球數</div>
                 <div id="hud-balls" class="text-2xl md:text-3xl font-black text-orange-400">30</div>
             </div>
-            <div class="bg-slate-950/75 backdrop-blur-md border border-cyan-500/40 rounded-2xl px-4 py-2 text-center shadow-xl min-w-[92px]">
+            <div class="bg-slate-950/80 backdrop-blur-md border border-cyan-500/40 rounded-2xl px-3 py-2 text-center shadow-xl">
                 <div class="text-[11px] text-cyan-200/90 font-semibold">剩餘時間</div>
-                <div id="hud-timer" class="text-2xl md:text-3xl font-black text-cyan-300 font-mono">03:00</div>
+                <div id="hud-timer" class="text-2xl md:text-3xl font-black text-cyan-300 font-mono">02:00</div>
             </div>
         </div>
     </div>
@@ -213,7 +225,7 @@
                 <div class="flex items-start gap-2">
                     <span class="text-amber-400 font-bold">3.</span>
                     <span id="control-instruction-text">
-                        <strong>iPad / 行動裝置：</strong>快速向上仰起或輕甩即可投籃！<br>
+                        <strong>iPad 直式握持：</strong>對準籃框後，雙手將 iPad <strong>明確向前上方「推」出</strong>即可投籃（單純轉向或抬頭不會誤投）！<br>
                         <strong>PC 電腦：</strong>滑鼠拖曳旋轉視角，按<strong>空白鍵 (Spacebar)</strong> 投籃！
                     </span>
                 </div>
@@ -359,7 +371,7 @@
         const RIM_HEIGHT = 2.5;          // 籃框高度離地 2.5m
         const THREE_POINT_RADIUS = 5.0;  // 三分線半徑 5m
         const TOTAL_BALLS = 30;          // 隨機散布 30 顆籃球
-        const GAME_DURATION = 180;       // 總限時 3 分鐘 (180 秒)
+        const GAME_DURATION = 120;       // 總限時 2 分鐘 (120 秒)
         const PLAYER_EYE_HEIGHT = 1.62;  // 玩家視角高度
         const JOG_SPEED = 4.2;           // 自動靠近籃球的慢跑速度 (m/s)
         const PICKUP_DISTANCE = 1.32;    // 完成撿球的判定水平距離
@@ -399,11 +411,14 @@
         const deviceOrientationData = { alpha: 0, beta: 90, gamma: 0 };
         let screenOrientationAngle = 0;
 
-        // 陀螺儀靈敏投籃偵測變數
-        let prevDeviceBeta = null;
-        let prevCameraPitch = null;
+        // 陀螺儀「明確推球動作」偵測變數（避免抬頭或轉身誤投）
+        const PICKUP_STABILIZE_MS = 650; // 撿球後 0.65 秒防誤觸穩定冷卻時間
+        const PUSH_ACCEL_THRESHOLD = 9.2; // 明確向前/向上推球的線性加速度門檻 (m/s²)
         let holdingStartTime = 0;
         let motionShootTriggered = false;
+        let consecutivePushFrames = 0;
+        let currentRotationRateMag = 0;
+        const gravityFilter = { x: 0, y: 0, z: 0, initialized: false };
 
         // PC 滑鼠拖曳視角變數 (支援 360 度無死角旋轉與俯仰)
         let isMouseDragging = false;
@@ -462,7 +477,7 @@
             isMobileOrTablet = isTouchMac || isMobileUA;
 
             if (isMobileOrTablet) {
-                deviceModeBadge.textContent = '已偵測到 iPad / 行動裝置：點擊「開始遊戲」啟用陀螺儀全視角與體感投籃';
+                deviceModeBadge.textContent = '已偵測到 iPad / 行動裝置（直式最佳化）：點擊「開始遊戲」啟用陀螺儀與推球體感';
             } else {
                 deviceModeBadge.textContent = '已偵測到 PC 桌面裝置：滑鼠拖曳控制視角 + 空白鍵 (Spacebar) 投籃';
             }
@@ -835,7 +850,7 @@
             targetLockRing.visible = false;
             scene.add(targetLockRing);
 
-            // 視窗與 iPad 橫向/直向動態調整 Aspect Ratio 監聽
+            // 視窗與 iPad 直式/橫向動態調整 Aspect Ratio 與視野監聽
             window.addEventListener('resize', onWindowResize, false);
             window.addEventListener('orientationchange', () => {
                 updateScreenOrientationAngle();
@@ -849,6 +864,7 @@
                 });
             }
             updateScreenOrientationAngle();
+            onWindowResize();
         }
 
         // --- 建立單座標準籃球架（含籃板、金屬橘紅籃圈、白色籃網、後方籃柱、光暈與金黃閃爍層） ---
@@ -1204,15 +1220,15 @@
             });
         }
 
-        // --- 請求 iOS DeviceOrientationEvent 與 DeviceMotionEvent 授權並綁定監聽 ---
+        // --- iOS 13+ 陀螺儀與動作感測器授權請求 ---
         async function requestGyroPermissionsAndBind() {
             try {
                 if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-                    const orientPerm = await DeviceOrientationEvent.requestPermission();
-                    if (orientPerm === 'granted') {
+                    const orientationPerm = await DeviceOrientationEvent.requestPermission();
+                    if (orientationPerm === 'granted') {
                         gyroEnabled = true;
                     }
-                } else if ('DeviceOrientationEvent' in window) {
+                } else {
                     gyroEnabled = true;
                 }
 
@@ -1220,16 +1236,14 @@
                     await DeviceMotionEvent.requestPermission();
                 }
             } catch (err) {
-                console.warn('Gyro permission fallback to PC mode:', err);
+                console.warn('Gyro permission request failed or skipped:', err);
             }
 
-            if (gyroEnabled) {
-                window.addEventListener('deviceorientation', onDeviceOrientation, true);
-                window.addEventListener('devicemotion', onDeviceMotion, true);
-            }
+            window.addEventListener('deviceorientation', onDeviceOrientation, true);
+            window.addEventListener('devicemotion', onDeviceMotion, true);
         }
 
-        // --- 陀螺儀方向事件 (含 delta beta 差值靈敏投籃偵測) ---
+        // --- 陀螺儀方向事件 (純控制 360 度直式/橫式視角，不因單純抬頭而誤觸投籃) ---
         function onDeviceOrientation(event) {
             if (event.alpha === null && event.beta === null && event.gamma === null) return;
 
@@ -1237,50 +1251,77 @@
             deviceOrientationData.alpha = event.alpha || 0;
             deviceOrientationData.beta = event.beta || 0;
             deviceOrientationData.gamma = event.gamma || 0;
-
-            // 持球狀態下，檢測俯仰角 (delta beta 差值) 快速向上仰起觸發投籃
-            if (gameState === STATE.HOLDING && (performance.now() - holdingStartTime > 260)) {
-                if (prevDeviceBeta !== null) {
-                    const deltaBeta = event.beta - prevDeviceBeta;
-                    // 大幅降低投籃觸發門檻：只要學生將平板向上仰起 (deltaBeta > 1.4 度/事件 或絕對角差 > 2.2)
-                    if (Math.abs(deltaBeta) > 1.55) {
-                        motionShootTriggered = true;
-                    }
-                }
-            }
-            prevDeviceBeta = event.beta;
         }
 
-        // --- 陀螺儀動態角速度與加速度事件 (靈敏向上仰起或甩動投籃) ---
+        // --- 陀螺儀動態事件：確實偵測到「向前/向上推球」的線性加速度才投出 ---
         function onDeviceMotion(event) {
-            if (gameState !== STATE.HOLDING) return;
-            if (performance.now() - holdingStartTime <= 260) return;
-
-            // 1. 檢查角速度 (rotationRate)
+            // 記錄目前旋轉角速度，用來判斷玩家是否正在快速左右轉身找籃框
             const rot = event.rotationRate;
             if (rot) {
-                const rotAlpha = Math.abs(rot.alpha || 0);
-                const rotBeta = Math.abs(rot.beta || 0);
-                const rotGamma = Math.abs(rot.gamma || 0);
-                // 低門檻：學生只要輕輕向上仰起或甩動 (角速度 > 42 deg/s) 即可順暢投出
-                if (rotAlpha > 42 || rotBeta > 42 || rotGamma > 55) {
-                    motionShootTriggered = true;
-                    return;
-                }
+                currentRotationRateMag = Math.hypot(rot.alpha || 0, rot.beta || 0, rot.gamma || 0);
+            } else {
+                currentRotationRateMag = 0;
             }
 
-            // 2. 檢查線性加速度 (acceleration / accelerationIncludingGravity)
-            const acc = event.acceleration;
-            if (acc) {
-                const mag = Math.hypot(acc.x || 0, acc.y || 0, acc.z || 0);
-                if (mag > 3.2) {
-                    motionShootTriggered = true;
-                    return;
+            if (gameState !== STATE.HOLDING) {
+                consecutivePushFrames = 0;
+                return;
+            }
+
+            // 撿球後穩定冷卻時間 (0.65 秒)，避免撿球低頭後抬頭或移動時誤投
+            if (performance.now() - holdingStartTime <= PICKUP_STABILIZE_MS) {
+                consecutivePushFrames = 0;
+                return;
+            }
+
+            // 取得移除重力後的純線性加速度 (m/s²)
+            let ax = 0, ay = 0, az = 0;
+            if (event.acceleration && (event.acceleration.x !== null || event.acceleration.y !== null || event.acceleration.z !== null)) {
+                ax = event.acceleration.x || 0;
+                ay = event.acceleration.y || 0;
+                az = event.acceleration.z || 0;
+            } else if (event.accelerationIncludingGravity) {
+                // 備用高通濾波扣除重力分量
+                const gx = event.accelerationIncludingGravity.x || 0;
+                const gy = event.accelerationIncludingGravity.y || 0;
+                const gz = event.accelerationIncludingGravity.z || 0;
+                if (!gravityFilter.initialized) {
+                    gravityFilter.x = gx;
+                    gravityFilter.y = gy;
+                    gravityFilter.z = gz;
+                    gravityFilter.initialized = true;
                 }
+                const alpha = 0.82;
+                gravityFilter.x = alpha * gravityFilter.x + (1 - alpha) * gx;
+                gravityFilter.y = alpha * gravityFilter.y + (1 - alpha) * gy;
+                gravityFilter.z = alpha * gravityFilter.z + (1 - alpha) * gz;
+                ax = gx - gravityFilter.x;
+                ay = gy - gravityFilter.y;
+                az = gz - gravityFilter.z;
+            }
+
+            // iPad 直式握持時：
+            // Z 軸為垂直螢幕前後推出方向，Y 軸為螢幕縱向往上推舉方向，X 軸為左右橫移
+            // 計算「向前 + 向上」的推球合成線性加速度，並排斥單純左右晃動 (|ax| 過大時不計為推球)
+            const forwardUpPushAccel = Math.hypot(ay, az);
+            const isForwardOrUpDominant = forwardUpPushAccel > Math.abs(ax) * 1.35;
+
+            // 若玩家正在劇烈左右旋轉找籃框（非推球），提高防誤觸保護
+            const isRapidlySpinningYaw = rot && Math.abs(rot.gamma || 0) > 140;
+
+            if (!isRapidlySpinningYaw && isForwardOrUpDominant && forwardUpPushAccel >= PUSH_ACCEL_THRESHOLD) {
+                consecutivePushFrames++;
+                // 需連續偵測到明確推力峰值（或單次極強推擊 > 13.5 m/s²），確保是真實「推球」動作
+                if (consecutivePushFrames >= 2 || forwardUpPushAccel >= 13.5) {
+                    motionShootTriggered = true;
+                    consecutivePushFrames = 0;
+                }
+            } else if (forwardUpPushAccel < PUSH_ACCEL_THRESHOLD * 0.65) {
+                consecutivePushFrames = 0;
             }
         }
 
-        // --- 更新持球狀態下球體與中央偏上瞄準紅圈重疊 ---
+        // --- 更新持球狀態下球體與中央偏上瞄準紅圈重疊（自動適應 iPad 直式/橫式 FOV） ---
         function updateHeldBallTransform(dt) {
             if (!activeBall) return;
 
@@ -1288,7 +1329,9 @@
             const raycaster = new THREE.Raycaster();
             raycaster.setFromCamera(AIM_NDC, camera);
 
-            const holdDist = 0.85; // 距離鏡頭前方 0.85m
+            // 依據目前相機 FOV 動態微調持球距離，使直式畫面下球體大小與紅圈完美契合
+            const fovRad = THREE.MathUtils.degToRad(camera.fov);
+            const holdDist = THREE.MathUtils.clamp(0.55 / Math.tan(fovRad * 0.5), 0.62, 0.92);
             const targetPos = new THREE.Vector3()
                 .copy(camera.position)
                 .addScaledVector(raycaster.ray.direction, holdDist);
@@ -1378,14 +1421,13 @@
             gameState = STATE.HOLDING;
             holdingStartTime = performance.now();
             motionShootTriggered = false;
-            prevDeviceBeta = deviceOrientationData.beta;
-            prevCameraPitch = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion).y;
+            consecutivePushFrames = 0;
 
             sfx.playPickup();
             updateHeldBallTransform(0);
 
             if (hasReceivedGyroData) {
-                hudStatusHint.textContent = '持球中！對準發光籃架「向上仰起或輕甩」投籃';
+                hudStatusHint.textContent = '持球中！對準發光籃架「向前上方推出 iPad」投籃';
             } else {
                 hudStatusHint.textContent = '持球中！對準發光籃架按「空白鍵 (Spacebar)」投籃';
             }
@@ -1661,7 +1703,7 @@
         function destroyBallAndResetCamera() {
             if (activeBall) {
                 scene.remove(activeBall);
-                activeBall.Material?.dispose?.();
+                activeBall.material?.dispose?.();
                 activeBall = null;
             }
 
@@ -1739,12 +1781,21 @@
             endModal.classList.add('flex');
         }
 
-        // --- 視窗與 iPad 轉向動態 Aspect Ratio 響應 ---
+        // --- 視窗與 iPad 直式畫面 (Portrait) 動態 Aspect Ratio 與廣角視野最佳化 ---
         function onWindowResize() {
             if (!camera || !renderer) return;
             const width = window.innerWidth;
             const height = window.innerHeight;
-            camera.aspect = width / height;
+            const aspect = width / height;
+
+            // 針對 iPad 直式畫面 (aspect < 1) 動態擴大垂直 FOV，確保直向握持時水平與垂直視野寬廣不狹窄
+            if (aspect < 1.0) {
+                camera.fov = THREE.MathUtils.clamp(65 / Math.pow(aspect, 0.45), 76, 88);
+            } else {
+                camera.fov = 65;
+            }
+
+            camera.aspect = aspect;
             camera.updateProjectionMatrix();
             renderer.setSize(width, height);
         }
@@ -1761,7 +1812,7 @@
 
             // 地面籃球微幅動態光澤呼吸
             if (gameState !== STATE.IDLE && gameState !== STATE.ENDED) {
-                // 180 秒倒數計時檢查
+                // 120 秒 (2 分鐘) 倒數計時檢查
                 if (now - lastTimerTick >= 1000) {
                     const elapsedSec = Math.floor((now - lastTimerTick) / 1000);
                     timeRemaining = Math.max(0, timeRemaining - elapsedSec);
@@ -1769,7 +1820,7 @@
                     updateTimerDisplay();
 
                     if (timeRemaining <= 0) {
-                        endGame('3 分鐘練習時間到！');
+                        endGame('2 分鐘練習時間到！');
                         renderer.render(scene, camera);
                         return;
                     }
@@ -1792,16 +1843,7 @@
                     camera.quaternion.copy(playerQuat);
                     updateHeldBallTransform(dt);
 
-                    // 陀螺儀靈敏投籃檢測：包含相機仰角瞬時上揚 或 DeviceMotion/DeltaBeta 觸發
-                    const currentCamForwardY = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion).y;
-                    if (prevCameraPitch !== null && (now - holdingStartTime > 260)) {
-                        const pitchVel = (currentCamForwardY - prevCameraPitch) / Math.max(dt, 0.008);
-                        if (pitchVel > 0.52) {
-                            motionShootTriggered = true;
-                        }
-                    }
-                    prevCameraPitch = currentCamForwardY;
-
+                    // 僅當 onDeviceMotion 確實偵測到「向前/向上推球」的線性加速度時才投出籃球
                     if (motionShootTriggered) {
                         motionShootTriggered = false;
                         shootBasketball();
