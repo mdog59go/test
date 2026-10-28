@@ -1,1 +1,1481 @@
-p8
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>平板接籃球 - 3D 感測互動練習</title>
+  <!-- 引入 Three.js r128 CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #0b1320;
+      font-family: "PingFang TC", "Microsoft JhengHei", "Noto Sans TC", sans-serif;
+      touch-action: none;
+    }
+
+    #canvas-container {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+    }
+
+    /* 畫面中央半透明雙手掌 HUD 輔助視覺層 (與 3D 手掌同步對應) */
+    #hands-overlay {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: min(44vw, 44vh, 260px);
+      height: min(44vw, 44vh, 260px);
+      pointer-events: none;
+      z-index: 5;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.15s ease-out, filter 0.15s ease-out;
+    }
+
+    #hands-overlay.catch-pulse {
+      transform: translate(-50%, -50%) scale(1.16);
+      filter: drop-shadow(0 0 25px rgba(74, 222, 128, 0.95));
+    }
+
+    #hands-overlay svg {
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+      filter: drop-shadow(0 0 12px rgba(56, 189, 248, 0.55));
+    }
+
+    /* 抬頭顯示器 HUD */
+    #hud {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      padding: 16px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      z-index: 10;
+      pointer-events: none;
+    }
+
+    .hud-group {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .hud-card {
+      background: rgba(15, 23, 42, 0.78);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border: 1px solid rgba(148, 163, 184, 0.3);
+      border-radius: 14px;
+      padding: 10px 18px;
+      color: #f8fafc;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+      display: flex;
+      flex-direction: column;
+      min-width: 110px;
+    }
+
+    .hud-label {
+      font-size: 12px;
+      color: #94a3b8;
+      letter-spacing: 1px;
+      margin-bottom: 2px;
+    }
+
+    .hud-value {
+      font-size: 22px;
+      font-weight: 800;
+      color: #38bdf8;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .hud-value.score {
+      color: #fb923c;
+    }
+
+    .hud-value.time {
+      color: #4ade80;
+    }
+
+    #recalibrate-btn {
+      pointer-events: auto;
+      background: rgba(30, 41, 59, 0.85);
+      color: #e2e8f0;
+      border: 1px solid rgba(56, 189, 248, 0.5);
+      border-radius: 12px;
+      padding: 10px 14px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+
+    #recalibrate-btn:active, #recalibrate-btn:hover {
+      background: rgba(56, 189, 248, 0.25);
+      transform: translateY(-1px);
+    }
+
+    /* Good! 得分特效文字 */
+    #good-banner {
+      position: fixed;
+      top: 18%;
+      left: 50%;
+      transform: translate(-50%, -50%) scale(0.5);
+      font-size: clamp(48px, 8vw, 84px);
+      font-weight: 900;
+      color: #facc15;
+      text-shadow:
+        0 0 20px rgba(250, 204, 21, 0.9),
+        0 6px 0 #b45309,
+        0 12px 24px rgba(0, 0, 0, 0.65);
+      letter-spacing: 3px;
+      opacity: 0;
+      pointer-events: none;
+      z-index: 15;
+      transition: transform 0.22s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.2s ease;
+    }
+
+    #good-banner.show {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1);
+    }
+
+    /* 底部操作提示 */
+    #control-hint {
+      position: fixed;
+      bottom: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(15, 23, 42, 0.7);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #cbd5e1;
+      padding: 6px 16px;
+      border-radius: 999px;
+      font-size: 13px;
+      z-index: 10;
+      pointer-events: none;
+      white-space: nowrap;
+    }
+
+    /* 開始與結束彈窗 Overlay */
+    .overlay-screen {
+      position: fixed;
+      inset: 0;
+      background: radial-gradient(circle at center, rgba(15, 23, 42, 0.82) 0%, rgba(2, 6, 23, 0.95) 100%);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 30;
+      padding: 20px;
+      transition: opacity 0.3s ease;
+    }
+
+    .overlay-screen.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .dialog-card {
+      background: linear-gradient(145deg, rgba(30, 41, 59, 0.95), rgba(15, 23, 42, 0.98));
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      border-radius: 24px;
+      padding: 36px 32px;
+      width: 100%;
+      max-width: 460px;
+      text-align: center;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7), 0 0 30px rgba(56, 189, 248, 0.15);
+      color: #f8fafc;
+    }
+
+    .dialog-icon {
+      font-size: 56px;
+      margin-bottom: 12px;
+      display: inline-block;
+      filter: drop-shadow(0 6px 12px rgba(238, 89, 33, 0.5));
+    }
+
+    .dialog-title {
+      font-size: 30px;
+      font-weight: 900;
+      margin-bottom: 10px;
+      background: linear-gradient(90deg, #38bdf8, #fb923c);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .dialog-subtitle {
+      font-size: 14px;
+      color: #94a3b8;
+      line-height: 1.6;
+      margin-bottom: 24px;
+    }
+
+    .input-group {
+      text-align: left;
+      margin-bottom: 24px;
+    }
+
+    .input-group label {
+      display: block;
+      font-size: 14px;
+      font-weight: 600;
+      color: #cbd5e1;
+      margin-bottom: 8px;
+    }
+
+    .input-group input {
+      width: 100%;
+      padding: 14px 16px;
+      border-radius: 12px;
+      border: 2px solid rgba(148, 163, 184, 0.3);
+      background: rgba(15, 23, 42, 0.9);
+      color: #ffffff;
+      font-size: 18px;
+      font-weight: 700;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      user-select: text;
+      -webkit-user-select: text;
+    }
+
+    .input-group input:focus {
+      border-color: #38bdf8;
+      box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.2);
+    }
+
+    .primary-btn {
+      width: 100%;
+      padding: 16px 24px;
+      border: none;
+      border-radius: 14px;
+      background: linear-gradient(135deg, #ee5921 0%, #f97316 100%);
+      color: #ffffff;
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      cursor: pointer;
+      box-shadow: 0 10px 25px -5px rgba(238, 89, 33, 0.6);
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .primary-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 14px 28px -5px rgba(238, 89, 33, 0.75);
+    }
+
+    .primary-btn:active {
+      transform: translateY(1px);
+    }
+
+    .result-text {
+      font-size: 20px;
+      line-height: 1.6;
+      color: #e2e8f0;
+      margin: 20px 0 28px;
+      padding: 18px;
+      background: rgba(15, 23, 42, 0.65);
+      border-radius: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .result-score-highlight {
+      display: block;
+      font-size: 44px;
+      font-weight: 900;
+      color: #fb923c;
+      margin-top: 8px;
+      text-shadow: 0 0 20px rgba(251, 146, 60, 0.45);
+    }
+
+    @media (max-width: 600px) {
+      #hud {
+        padding: 10px 12px;
+      }
+      .hud-card {
+        padding: 8px 12px;
+        min-width: 82px;
+      }
+      .hud-value {
+        font-size: 18px;
+      }
+      .dialog-card {
+        padding: 28px 20px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 3D 場景容器 -->
+  <div id="canvas-container"></div>
+
+  <!-- 畫面中央的半透明雙手掌 (與 3D 空間雙手同步，清楚標示接球中心範圍) -->
+  <div id="hands-overlay">
+    <svg viewBox="0 0 260 220" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- 中央感應瞄準環 -->
+      <circle cx="130" cy="115" r="78" stroke="rgba(56, 189, 248, 0.35)" stroke-width="2" stroke-dasharray="8 6" />
+      <circle cx="130" cy="115" r="10" fill="rgba(56, 189, 248, 0.45)" />
+      <!-- 左手掌 (半透明) -->
+      <g opacity="0.58">
+        <path d="M88 180 C62 178, 44 156, 42 128 L35 84 C34 76, 45 73, 48 81 L55 112
+                 L54 60 C54 51, 66 51, 67 60 L69 106
+                 L73 50 C74 41, 86 42, 86 51 L84 105
+                 L92 58 C94 50, 105 52, 103 61 L97 114
+                 L112 94 C118 87, 127 95, 120 104 L103 142
+                 C98 162, 96 180, 88 180 Z"
+              fill="rgba(125, 211, 252, 0.38)"
+              stroke="rgba(224, 242, 254, 0.9)"
+              stroke-width="3"
+              stroke-linejoin="round" />
+        <path d="M58 135 Q80 128 95 142" stroke="rgba(224, 242, 254, 0.55)" stroke-width="2" stroke-linecap="round"/>
+      </g>
+      <!-- 右手掌 (半透明) -->
+      <g opacity="0.58">
+        <path d="M172 180 C198 178, 216 156, 218 128 L225 84 C226 76, 215 73, 212 81 L205 112
+                 L206 60 C206 51, 194 51, 193 60 L191 106
+                 L187 50 C186 41, 174 42, 174 51 L176 105
+                 L168 58 C166 50, 155 52, 157 61 L163 114
+                 L148 94 C142 87, 133 95, 140 104 L157 142
+                 C162 162, 164 180, 172 180 Z"
+              fill="rgba(125, 211, 252, 0.38)"
+              stroke="rgba(224, 242, 254, 0.9)"
+              stroke-width="3"
+              stroke-linejoin="round" />
+        <path d="M202 135 Q180 128 165 142" stroke="rgba(224, 242, 254, 0.55)" stroke-width="2" stroke-linecap="round"/>
+      </g>
+    </svg>
+  </div>
+
+  <!-- 抬頭顯示器 HUD -->
+  <div id="hud">
+    <div class="hud-group">
+      <div class="hud-card">
+        <span class="hud-label">練習生姓名</span>
+        <span class="hud-value" id="hud-name">一甲國小練習生</span>
+      </div>
+      <div class="hud-card">
+        <span class="hud-label">剩餘時間 (2分鐘)</span>
+        <span class="hud-value time" id="hud-time">02:00</span>
+      </div>
+      <div class="hud-card">
+        <span class="hud-label">剩餘籃球</span>
+        <span class="hud-value" id="hud-balls">30 / 30</span>
+      </div>
+      <div class="hud-card">
+        <span class="hud-label">當前得分</span>
+        <span class="hud-value score" id="hud-score">0</span>
+      </div>
+    </div>
+    <button id="recalibrate-btn" title="將目前平板傾斜角度設為中心點">陀螺儀歸零</button>
+  </div>
+
+  <!-- 得分 Good! 動畫字樣 -->
+  <div id="good-banner">Good!</div>
+
+  <!-- 操控提示 -->
+  <div id="control-hint">傾斜平板、移動滑鼠或按 WASD / 方向鍵，讓畫面中央雙手掌接住飛來的籃球！</div>
+
+  <!-- 開始畫面 Overlay -->
+  <div id="start-overlay" class="overlay-screen">
+    <div class="dialog-card">
+      <div class="dialog-icon">🏀</div>
+      <h1 class="dialog-title">平板接籃球</h1>
+      <p class="dialog-subtitle">
+        共有 <strong>30 顆籃球</strong>、限時 <strong>2 分鐘</strong>。<br/>
+        傾斜平板（或使用滑鼠 / WASD）移動視角，<br/>
+        用畫面中央的<strong>半透明雙手掌</strong>接住彈跳飛來的籃球！
+      </p>
+      <div class="input-group">
+        <label for="player-name-input">請輸入練習生姓名：</label>
+        <input type="text" id="player-name-input" value="一甲國小練習生" maxlength="20" placeholder="請輸入姓名" />
+      </div>
+      <button id="start-btn" class="primary-btn">開始遊戲</button>
+    </div>
+  </div>
+
+  <!-- 結算畫面 Overlay -->
+  <div id="end-overlay" class="overlay-screen hidden">
+    <div class="dialog-card">
+      <div class="dialog-icon">🏆</div>
+      <h2 class="dialog-title">練習結束！</h2>
+      <div class="result-text" id="end-result-text">
+        練習結束！一甲國小練習生 的最終成績為：
+        <span class="result-score-highlight">0 分</span>
+      </div>
+      <button id="restart-btn" class="primary-btn">再試一次</button>
+    </div>
+  </div>
+
+  <script>
+    /**************************************************************
+     * 1. 音效合成器 (Web Audio API) - 無外部音檔依賴，保證流暢觸發
+     **************************************************************/
+    class SoundManager {
+      constructor() {
+        this.ctx = null;
+      }
+
+      init() {
+        if (!this.ctx) {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          if (AudioCtx) {
+            this.ctx = new AudioCtx();
+          }
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+
+      // 發球音效 (籃網刷聲 + 輕快短音)
+      playLaunch() {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(240, now);
+        osc.frequency.exponentialRampToValueAtTime(420, now + 0.09);
+
+        gain.gain.setValueAtTime(0.12, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.1);
+      }
+
+      // 籃球地板彈跳音效 (低頻鼓音模擬籃球拍地聲)
+      playBounce() {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(145, now);
+        osc.frequency.exponentialRampToValueAtTime(48, now + 0.14);
+
+        gain.gain.setValueAtTime(0.32, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.15);
+      }
+
+      // 成功接球音效 (雙手接球厚實聲 + 歡快雙音 Beep)
+      playCatch() {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+
+        // 1. 雙手接住皮革球的厚實聲
+        const thudOsc = this.ctx.createOscillator();
+        const thudGain = this.ctx.createGain();
+        thudOsc.type = 'sine';
+        thudOsc.frequency.setValueAtTime(180, now);
+        thudOsc.frequency.exponentialRampToValueAtTime(55, now + 0.1);
+        thudGain.gain.setValueAtTime(0.35, now);
+        thudGain.gain.exponentialRampToValueAtTime(0.001, now + 0.11);
+        thudOsc.connect(thudGain);
+        thudGain.connect(this.ctx.destination);
+        thudOsc.start(now);
+        thudOsc.stop(now + 0.11);
+
+        // 2. 得分清脆雙音 (C6 -> G6)
+        const notes = [523.25, 783.99];
+        notes.forEach((freq, idx) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          const startTime = now + idx * 0.075;
+          osc.frequency.setValueAtTime(freq, startTime);
+
+          gain.gain.setValueAtTime(0.26, startTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.22);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(startTime);
+          osc.stop(startTime + 0.22);
+        });
+      }
+
+      // 漏接音效
+      playMiss() {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(190, now);
+        osc.frequency.linearRampToValueAtTime(110, now + 0.16);
+
+        gain.gain.setValueAtTime(0.12, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.17);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.17);
+      }
+
+      // 結算號角音效
+      playGameOver() {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const notes = [440, 554.37, 659.25, 880];
+        notes.forEach((freq, i) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          const start = now + i * 0.11;
+          osc.frequency.setValueAtTime(freq, start);
+          gain.gain.setValueAtTime(0.24, start);
+          gain.gain.exponentialRampToValueAtTime(0.001, start + 0.35);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(start);
+          osc.stop(start + 0.35);
+        });
+      }
+    }
+
+    const sound = new SoundManager();
+
+    /**************************************************************
+     * 2. 遊戲全域參數與狀態
+     **************************************************************/
+    const GAME_CONFIG = {
+      totalDuration: 120,      // 2 分鐘 (120 秒)
+      totalBalls: 30,          // 一共 30 顆籃球
+      courtSize: 8,            // 8 x 8 公尺球場
+      gridZ: 1.65,             // 九宮格位於前方 Z 座標 (玩家位於 Z = 3.25，距離玩家 1.6m)
+      cameraZ: 3.25,           // 攝影機 Z 軸位置
+      gridCenterY: 1.45,       // 九宮格中心高度 Y
+      cellSize: 0.5,           // 每格 50cm x 50cm (0.5m)
+      ballRadius: 0.15,        // 籃球半徑
+      hoopPos: new THREE.Vector3(0, 2.0, -2.8) // 籃框位置 (高度 2 公尺)
+    };
+
+    const state = {
+      isPlaying: false,
+      playerName: '一甲國小練習生',
+      score: 0,
+      remainingTime: GAME_CONFIG.totalDuration,
+      spawnedBalls: 0,
+      resolvedBalls: 0,
+      nextSpawnTime: 0,
+      elapsedGameTime: 0,
+      // 攝影機移動目標與當前座標 (對應九宮格範圍)
+      targetCamX: 0,
+      targetCamY: GAME_CONFIG.gridCenterY,
+      // 陀螺儀基準角與感測值
+      gyroCalibrated: false,
+      baseBeta: 60,
+      baseGamma: 0,
+      lastRawBeta: null,
+      lastRawGamma: null,
+      // 鍵盤狀態
+      keys: { w: false, a: false, s: false, d: false, ArrowUp: false, ArrowLeft: false, ArrowDown: false, ArrowRight: false }
+    };
+
+    /**************************************************************
+     * 3. 建立 Three.js 場景、攝影機、渲染器與高質感光影
+     **************************************************************/
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0b1526);
+    scene.fog = new THREE.FogExp2(0x0b1526, 0.055);
+
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 50);
+    camera.position.set(0, GAME_CONFIG.gridCenterY, GAME_CONFIG.cameraZ);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.15;
+    container.appendChild(renderer.domElement);
+
+    // 燈光設定：環境光 + 半球光 + 高解析陰影主方向光 + 球場聚光燈
+    const ambientLight = new THREE.AmbientLight(0xdbeafe, 0.55);
+    scene.add(ambientLight);
+
+    const hemiLight = new THREE.HemisphereLight(0x93c5fd, 0x1a2a40, 0.45);
+    hemiLight.position.set(0, 10, 0);
+    scene.add(hemiLight);
+
+    const dirLight = new THREE.DirectionalLight(0xfffbeb, 1.15);
+    dirLight.position.set(3.5, 8.5, 4.5);
+    dirLight.castShadow = true;
+    dirLight.shadow.mapSize.width = 2048;
+    dirLight.shadow.mapSize.height = 2048;
+    dirLight.shadow.camera.near = 0.5;
+    dirLight.shadow.camera.far = 20;
+    const d = 5.5;
+    dirLight.shadow.camera.left = -d;
+    dirLight.shadow.camera.right = d;
+    dirLight.shadow.camera.top = d;
+    dirLight.shadow.camera.bottom = -d;
+    dirLight.shadow.bias = -0.0005;
+    scene.add(dirLight);
+
+    // 籃球架上方補光燈，強化球體與籃板高光質感
+    const hoopSpotLight = new THREE.SpotLight(0x38bdf8, 0.9, 12, Math.PI / 3, 0.5, 1.5);
+    hoopSpotLight.position.set(0, 5.2, -1.5);
+    hoopSpotLight.target.position.set(0, 1.0, -2.5);
+    scene.add(hoopSpotLight);
+    scene.add(hoopSpotLight.target);
+
+    /**************************************************************
+     * 4. 程序化高質感貼圖生成 (球場地板 & 籃球凹凸顆粒紋理)
+     **************************************************************/
+    // 4.1 8x8 公尺深藍色籃球場地面貼圖 (#1a2a40 + 白色標線 + 地板木紋質感)
+    function createCourtTextures() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 1024;
+      canvas.height = 1024;
+      const ctx = canvas.getContext('2d');
+
+      // 深藍底色 (#1a2a40)
+      ctx.fillStyle = '#1a2a40';
+      ctx.fillRect(0, 0, 1024, 1024);
+
+      // 細緻運動地板條紋質感
+      for (let i = 0; i < 64; i++) {
+        ctx.fillStyle = i % 2 === 0 ? 'rgba(255,255,255,0.018)' : 'rgba(0,0,0,0.025)';
+        ctx.fillRect(i * 16, 0, 16, 1024);
+      }
+
+      // 禁區深色塗裝
+      ctx.fillStyle = '#132033';
+      ctx.fillRect(352, 40, 320, 300);
+
+      // 白色球場標線
+      ctx.strokeStyle = '#f8fafc';
+      ctx.lineWidth = 10;
+      ctx.lineCap = 'round';
+
+      // 外圍邊線
+      ctx.strokeRect(40, 40, 944, 944);
+
+      // 中線與中圈
+      ctx.beginPath();
+      ctx.moveTo(40, 900);
+      ctx.lineTo(984, 900);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(512, 900, 120, Math.PI, Math.PI * 2);
+      ctx.stroke();
+
+      // 禁區與罰球圈
+      ctx.strokeRect(352, 40, 320, 300);
+      ctx.beginPath();
+      ctx.arc(512, 340, 110, 0, Math.PI);
+      ctx.stroke();
+
+      // 三分線意象
+      ctx.beginPath();
+      ctx.moveTo(120, 40);
+      ctx.lineTo(120, 220);
+      ctx.arc(512, 140, 400, 0.2, Math.PI - 0.2);
+      ctx.lineTo(904, 40);
+      ctx.stroke();
+
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+      return texture;
+    }
+
+    // 4.2 籃球顏色與凹凸顆粒貼圖 (#ee5921 + 黑色球紋 + 皮革顆粒 Bump Map)
+    function createBasketballTextures() {
+      const colorCanvas = document.createElement('canvas');
+      colorCanvas.width = 512;
+      colorCanvas.height = 256;
+      const cCtx = colorCanvas.getContext('2d');
+
+      const bumpCanvas = document.createElement('canvas');
+      bumpCanvas.width = 512;
+      bumpCanvas.height = 256;
+      const bCtx = bumpCanvas.getContext('2d');
+
+      // 橘紅色漸層底 (#ee5921)
+      cCtx.fillStyle = '#ee5921';
+      cCtx.fillRect(0, 0, 512, 256);
+
+      bCtx.fillStyle = '#808080';
+      bCtx.fillRect(0, 0, 512, 256);
+
+      // 加入皮革細微顆粒
+      for (let i = 0; i < 4500; i++) {
+        const x = Math.random() * 512;
+        const y = Math.random() * 256;
+        cCtx.fillStyle = Math.random() > 0.5 ? 'rgba(255,160,110,0.18)' : 'rgba(120,30,5,0.18)';
+        cCtx.fillRect(x, y, 2, 2);
+
+        bCtx.fillStyle = Math.random() > 0.5 ? '#ffffff' : '#303030';
+        bCtx.beginPath();
+        bCtx.arc(x, y, 1.4, 0, Math.PI * 2);
+        bCtx.fill();
+      }
+
+      // 繪製黑色籃球溝紋
+      const drawSeams = (ctx, color, width) => {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = width;
+
+        // 水平赤道線
+        ctx.beginPath();
+        ctx.moveTo(0, 128);
+        ctx.lineTo(512, 128);
+        ctx.stroke();
+
+        // 垂直經線
+        ctx.beginPath();
+        ctx.moveTo(128, 0);
+        ctx.lineTo(128, 256);
+        ctx.moveTo(384, 0);
+        ctx.lineTo(384, 256);
+        ctx.stroke();
+
+        // 兩側經典曲線紋路
+        ctx.beginPath();
+        ctx.arc(128, 128, 86, -Math.PI * 0.42, Math.PI * 0.42);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(384, 128, 86, Math.PI * 0.58, Math.PI * 1.42);
+        ctx.stroke();
+      };
+
+      drawSeams(cCtx, '#171717', 6);
+      drawSeams(bCtx, '#000000', 8);
+
+      const map = new THREE.CanvasTexture(colorCanvas);
+      const bumpMap = new THREE.CanvasTexture(bumpCanvas);
+      return { map, bumpMap };
+    }
+
+    const courtTexture = createCourtTextures();
+    const ballTextures = createBasketballTextures();
+
+    /**************************************************************
+     * 5. 建構 3D 球場、籃球架、九宮格與 3D 半透明雙手掌
+     **************************************************************/
+    // 5.1 8x8 公尺球場地面與外圍地板
+    const outerFloorGeo = new THREE.PlaneGeometry(26, 26);
+    const outerFloorMat = new THREE.MeshStandardMaterial({ color: 0x09111e, roughness: 0.9 });
+    const outerFloor = new THREE.Mesh(outerFloorGeo, outerFloorMat);
+    outerFloor.rotation.x = -Math.PI / 2;
+    outerFloor.position.y = -0.01;
+    outerFloor.receiveShadow = true;
+    scene.add(outerFloor);
+
+    const courtGeo = new THREE.PlaneGeometry(GAME_CONFIG.courtSize, GAME_CONFIG.courtSize);
+    const courtMat = new THREE.MeshStandardMaterial({
+      map: courtTexture,
+      roughness: 0.38,
+      metalness: 0.08
+    });
+    const courtMesh = new THREE.Mesh(courtGeo, courtMat);
+    courtMesh.rotation.x = -Math.PI / 2;
+    courtMesh.receiveShadow = true;
+    scene.add(courtMesh);
+
+    // 5.2 籃球架 (位於球場前方中央，高度 2 公尺，含支柱、透明籃板、橘色籃框與籃網)
+    function createBasketballHoop() {
+      const hoopGroup = new THREE.Group();
+      const hoopZ = GAME_CONFIG.hoopPos.z; // -2.8
+
+      const metalMat = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.75, roughness: 0.25 });
+      const padMat = new THREE.MeshStandardMaterial({ color: 0x1e3a8a, roughness: 0.6 });
+
+      // 底座與防撞護墊
+      const baseMesh = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.4, 0.9), padMat);
+      baseMesh.position.set(0, 0.2, hoopZ - 0.85);
+      baseMesh.castShadow = true;
+      baseMesh.receiveShadow = true;
+      hoopGroup.add(baseMesh);
+
+      // 主立柱
+      const poleMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.09, 2.35, 20), metalMat);
+      poleMesh.position.set(0, 1.175, hoopZ - 0.65);
+      poleMesh.castShadow = true;
+      hoopGroup.add(poleMesh);
+
+      // 延伸支臂
+      const armMesh = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.55), metalMat);
+      armMesh.position.set(0, 2.15, hoopZ - 0.4);
+      armMesh.castShadow = true;
+      hoopGroup.add(armMesh);
+
+      // 壓克力半透明籃板 (含白框與瞄準紅框貼圖)
+      const bbCanvas = document.createElement('canvas');
+      bbCanvas.width = 512;
+      bbCanvas.height = 384;
+      const bctx = bbCanvas.getContext('2d');
+      bctx.fillStyle = 'rgba(226, 232, 240, 0.22)';
+      bctx.fillRect(0, 0, 512, 384);
+      bctx.strokeStyle = '#ffffff';
+      bctx.lineWidth = 14;
+      bctx.strokeRect(12, 12, 488, 360);
+      bctx.strokeStyle = '#ef4444';
+      bctx.lineWidth = 10;
+      bctx.strokeRect(176, 170, 160, 130);
+
+      const bbTex = new THREE.CanvasTexture(bbCanvas);
+      const backboardMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(1.4, 0.95, 0.04),
+        new THREE.MeshPhysicalMaterial({
+          map: bbTex,
+          transparent: true,
+          opacity: 0.88,
+          roughness: 0.15,
+          metalness: 0.1
+        })
+      );
+      backboardMesh.position.set(0, 2.25, hoopZ - 0.18);
+      backboardMesh.castShadow = true;
+      hoopGroup.add(backboardMesh);
+
+      // 籃框 (高度 2.0 公尺)
+      const rimMat = new THREE.MeshStandardMaterial({ color: 0xee5921, metalness: 0.6, roughness: 0.25 });
+      const rimMesh = new THREE.Mesh(new THREE.TorusGeometry(0.23, 0.018, 16, 36), rimMat);
+      rimMesh.rotation.x = Math.PI / 2;
+      rimMesh.position.copy(GAME_CONFIG.hoopPos);
+      rimMesh.castShadow = true;
+      hoopGroup.add(rimMesh);
+
+      // 籃網 (開放式錐形格線)
+      const netGeo = new THREE.CylinderGeometry(0.22, 0.14, 0.34, 16, 4, true);
+      const netMat = new THREE.MeshBasicMaterial({
+        color: 0xf8fafc,
+        wireframe: true,
+        transparent: true,
+        opacity: 0.75
+      });
+      const netMesh = new THREE.Mesh(netGeo, netMat);
+      netMesh.position.set(0, GAME_CONFIG.hoopPos.y - 0.17, GAME_CONFIG.hoopPos.z);
+      hoopGroup.add(netMesh);
+
+      scene.add(hoopGroup);
+      return { netMesh, rimMesh };
+    }
+
+    const hoopRefs = createBasketballHoop();
+
+    // 5.3 九宮格捕捉目標區 (3x3 矩陣，每格 0.5m x 0.5m，位於玩家前方 Z = 1.65m)
+    const gridCells = [];
+    const gridGroup = new THREE.Group();
+    scene.add(gridGroup);
+
+    function createNineGrid() {
+      const { cellSize, gridCenterY, gridZ } = GAME_CONFIG;
+
+      for (let row = 0; row < 3; row++) {
+        for (let col = 0; col < 3; col++) {
+          const x = (col - 1) * cellSize;
+          const y = gridCenterY + (1 - row) * cellSize;
+
+          // 半透明格面
+          const planeGeo = new THREE.PlaneGeometry(cellSize * 0.94, cellSize * 0.94);
+          const planeMat = new THREE.MeshBasicMaterial({
+            color: 0x38bdf8,
+            transparent: true,
+            opacity: 0.08,
+            side: THREE.DoubleSide,
+            depthWrite: false
+          });
+          const cellMesh = new THREE.Mesh(planeGeo, planeMat);
+          cellMesh.position.set(x, y, gridZ);
+
+          // 清晰發光邊框
+          const edgeGeo = new THREE.EdgesGeometry(new THREE.PlaneGeometry(cellSize * 0.96, cellSize * 0.96));
+          const edgeMat = new THREE.LineBasicMaterial({
+            color: 0x7dd3fc,
+            transparent: true,
+            opacity: 0.45
+          });
+          const edgeLines = new THREE.LineSegments(edgeGeo, edgeMat);
+          cellMesh.add(edgeLines);
+
+          gridGroup.add(cellMesh);
+          gridCells.push({
+            index: row * 3 + col,
+            row,
+            col,
+            center: new THREE.Vector3(x, y, gridZ),
+            mesh: cellMesh,
+            edgeLines
+          });
+        }
+      }
+    }
+    createNineGrid();
+
+    // 5.4 建立 3D 半透明雙手掌模型 (固定於攝影機視角正中央前方，隨視角移動)
+    const hands3DGroup = new THREE.Group();
+    scene.add(hands3DGroup);
+
+    function create3DHands() {
+      const handMat = new THREE.MeshPhysicalMaterial({
+        color: 0x7dd3fc,
+        emissive: 0x0284c7,
+        emissiveIntensity: 0.35,
+        transparent: true,
+        opacity: 0.42,
+        roughness: 0.2,
+        metalness: 0.1,
+        depthWrite: false
+      });
+
+      const buildSingleHand = (isLeft) => {
+        const singleHand = new THREE.Group();
+        const dir = isLeft ? -1 : 1;
+
+        // 掌心
+        const palm = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.12, 0.025), handMat);
+        singleHand.add(palm);
+
+        // 四根手指
+        const fingerHeights = [0.075, 0.09, 0.085, 0.068];
+        fingerHeights.forEach((h, idx) => {
+          const finger = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.011, h, 10), handMat);
+          const offsetX = (idx - 1.5) * 0.026 * -dir;
+          finger.position.set(offsetX, 0.06 + h / 2, 0);
+          singleHand.add(finger);
+        });
+
+        // 大拇指
+        const thumb = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.013, 0.065, 10), handMat);
+        thumb.position.set(-dir * 0.068, 0.01, 0.01);
+        thumb.rotation.z = dir * 0.65;
+        singleHand.add(thumb);
+
+        singleHand.position.set(dir * 0.1, -0.02, 0);
+        singleHand.rotation.z = -dir * 0.12;
+        return singleHand;
+      };
+
+      hands3DGroup.add(buildSingleHand(true));
+      hands3DGroup.add(buildSingleHand(false));
+    }
+    create3DHands();
+
+    /**************************************************************
+     * 6. 籃球物件池、彈跳軌跡與特效管理
+     **************************************************************/
+    const activeBalls = [];
+    const bounceRings = [];
+    const sharedBallGeo = new THREE.SphereGeometry(GAME_CONFIG.ballRadius, 32, 32);
+    const sharedBallMat = new THREE.MeshStandardMaterial({
+      map: ballTextures.map,
+      bumpMap: ballTextures.bumpMap,
+      bumpScale: 0.008,
+      roughness: 0.42,
+      metalness: 0.05
+    });
+
+    // 發射一顆瞄準九宮格隨機格子的籃球
+    function spawnBasketball() {
+      if (state.spawnedBalls >= GAME_CONFIG.totalBalls) return;
+
+      state.spawnedBalls++;
+      updateHUD();
+      sound.playLaunch();
+
+      // 隨機挑選九宮格其中一格 (0 ~ 8)
+      const cellIdx = Math.floor(Math.random() * gridCells.length);
+      const targetCell = gridCells[cellIdx];
+
+      // 目標格微幅發光提示
+      targetCell.mesh.material.opacity = 0.28;
+      targetCell.edgeLines.material.color.setHex(0xfbbf24);
+      targetCell.edgeLines.material.opacity = 0.9;
+
+      const ballMesh = new THREE.Mesh(sharedBallGeo, sharedBallMat);
+      ballMesh.castShadow = true;
+      ballMesh.receiveShadow = true;
+
+      const startPos = GAME_CONFIG.hoopPos.clone();
+      ballMesh.position.copy(startPos);
+      scene.add(ballMesh);
+
+      // 計算逼真地板一次彈跳軌跡：
+      // 第 1 段 (t: 0 -> 0.52): 從籃框 (Z=-2.8, Y=2.0) 落向球場地面彈跳點 (Z=-0.55, Y=ballRadius)
+      // 第 2 段 (t: 0.52 -> 1.0): 從地面彈跳點彈向九宮格目標格 (Z=1.65, Y=targetY) 並繼續飛向攝影機近平面 (Z=3.25)
+      const bounceT = 0.52;
+      const bounceZ = -0.55;
+      const bounceX = targetCell.center.x * 0.48;
+      const flightDuration = 1.95; // 球飛到九宮格的時間 (秒)
+
+      activeBalls.push({
+        mesh: ballMesh,
+        targetCell,
+        startPos,
+        bouncePos: new THREE.Vector3(bounceX, GAME_CONFIG.ballRadius, bounceZ),
+        gridTargetPos: targetCell.center.clone(),
+        elapsed: 0,
+        flightDuration,
+        bounceT,
+        hasBounced: false,
+        spinAxis: new THREE.Vector3(1, (Math.random() - 0.5) * 0.5, 0).normalize(),
+        spinSpeed: 8 + Math.random() * 4
+      });
+    }
+
+    // 地面彈跳水波紋特效
+    function createBounceRing(x, z) {
+      const ringGeo = new THREE.RingGeometry(0.05, 0.09, 24);
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: 0x38bdf8,
+        transparent: true,
+        opacity: 0.75,
+        side: THREE.DoubleSide
+      });
+      const ring = new THREE.Mesh(ringGeo, ringMat);
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.set(x, 0.01, z);
+      scene.add(ring);
+      bounceRings.push({ mesh: ring, age: 0 });
+    }
+
+    // 重置單一九宮格高亮狀態
+    function resetCellHighlight(cell) {
+      const stillTargeted = activeBalls.some(b => b.targetCell.index === cell.index);
+      if (!stillTargeted) {
+        cell.mesh.material.opacity = 0.08;
+        cell.edgeLines.material.color.setHex(0x7dd3fc);
+        cell.edgeLines.material.opacity = 0.45;
+      }
+    }
+
+    /**************************************************************
+     * 7. 判定機制 (雙手掌碰撞 + 螢幕投影占比 >= 80% / 正對九宮格)
+     **************************************************************/
+    const handsOverlayEl = document.getElementById('hands-overlay');
+    const goodBannerEl = document.getElementById('good-banner');
+    let goodTimer = null;
+
+    function triggerGoodEffect() {
+      goodBannerEl.classList.add('show');
+      handsOverlayEl.classList.add('catch-pulse');
+      if (goodTimer) clearTimeout(goodTimer);
+      goodTimer = setTimeout(() => {
+        goodBannerEl.classList.remove('show');
+        handsOverlayEl.classList.remove('catch-pulse');
+      }, 1000);
+    }
+
+    function checkBallCatch(ball) {
+      const pos = ball.mesh.position;
+      const distToCameraZ = camera.position.z - pos.z;
+
+      // 當籃球進入玩家前方接球區間 (靠近雙手掌與攝影機 Near Plane: 距離攝影機 0.18m ~ 0.95m)
+      if (distToCameraZ <= 0.95 && distToCameraZ >= 0.15) {
+        // 1. 將籃球中心投影至螢幕標準化座標 NDC (-1 ~ +1)
+        const projected = pos.clone().project(camera);
+
+        // 2. 計算籃球與畫面中央「半透明雙手掌」的螢幕平面距離
+        // 畫面中央為 (0, 0)，雙手掌涵蓋中央區域
+        const screenDistFromHands = Math.hypot(projected.x, projected.y);
+
+        // 3. 計算攝影機(學生視角/雙手中心)與籃球或目標九宮格的 3D 平面對準距離
+        const alignErrorXY = Math.hypot(camera.position.x - pos.x, camera.position.y - pos.y);
+
+        // 4. 計算籃球在近平面接球區時的視覺投影占比 (當球逼近至 distToCameraZ <= 0.55m 時，在接球視野占比達 80% 以上)
+        const fovRad = THREE.MathUtils.degToRad(camera.fov);
+        const visibleHeightAtBall = 2 * Math.tan(fovRad / 2) * Math.max(distToCameraZ, 0.15);
+        const catchZoneProjectionRatio = (GAME_CONFIG.ballRadius * 2.8) / visibleHeightAtBall;
+
+        // 判定條件：
+        // 當球靠近手掌平面 (投影占比達標或逼近手掌深度) 且 球碰到畫面中央的半透明雙手掌 (screenDistFromHands <= 0.42 或 XY 對準誤差 <= 0.34m)
+        const handsTouched = (screenDistFromHands <= 0.42 || alignErrorXY <= 0.34);
+        const nearPlaneReady = (distToCameraZ <= 0.68 || catchZoneProjectionRatio >= 0.8);
+
+        if (handsTouched && nearPlaneReady) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    /**************************************************************
+     * 8. iPad 陀螺儀動態感測 (DeviceOrientation) 與 滑鼠/WASD 操控
+     **************************************************************/
+    function handleOrientation(event) {
+      if (event.beta === null || event.gamma === null) return;
+
+      state.lastRawBeta = event.beta;
+      state.lastRawGamma = event.gamma;
+
+      if (!state.gyroCalibrated) {
+        state.baseBeta = event.beta;
+        state.baseGamma = event.gamma;
+        state.gyroCalibrated = true;
+      }
+
+      // 計算相對於初始握持角度的傾斜量 (度)
+      const deltaGamma = THREE.MathUtils.clamp(event.gamma - state.baseGamma, -28, 28);
+      const deltaBeta = THREE.MathUtils.clamp(event.beta - state.baseBeta, -28, 28);
+
+      // 映射至九宮格 X (-0.75m ~ +0.75m) 與 Y (0.7m ~ 2.2m)
+      const maxOffset = GAME_CONFIG.cellSize * 1.45;
+      state.targetCamX = (deltaGamma / 22) * maxOffset;
+      state.targetCamY = GAME_CONFIG.gridCenterY - (deltaBeta / 22) * maxOffset;
+
+      clampTargetCamera();
+    }
+
+    function recalibrateGyro() {
+      if (state.lastRawBeta !== null && state.lastRawGamma !== null) {
+        state.baseBeta = state.lastRawBeta;
+        state.baseGamma = state.lastRawGamma;
+      }
+      state.targetCamX = 0;
+      state.targetCamY = GAME_CONFIG.gridCenterY;
+    }
+
+    document.getElementById('recalibrate-btn').addEventListener('click', () => {
+      recalibrateGyro();
+    });
+
+    function clampTargetCamera() {
+      const limit = GAME_CONFIG.cellSize * 1.45;
+      state.targetCamX = THREE.MathUtils.clamp(state.targetCamX, -limit, limit);
+      state.targetCamY = THREE.MathUtils.clamp(
+        state.targetCamY,
+        GAME_CONFIG.gridCenterY - limit,
+        GAME_CONFIG.gridCenterY + limit
+      );
+    }
+
+    // 電腦滑鼠移動支援
+    window.addEventListener('mousemove', (e) => {
+      if (!state.isPlaying) return;
+      const nx = (e.clientX / window.innerWidth) * 2 - 1;
+      const ny = -(e.clientY / window.innerHeight) * 2 + 1;
+      const limit = GAME_CONFIG.cellSize * 1.35;
+      state.targetCamX = nx * limit;
+      state.targetCamY = GAME_CONFIG.gridCenterY + ny * limit;
+      clampTargetCamera();
+    });
+
+    // 觸控拖曳備援 (若部分平板未開啟陀螺儀權限時也可直接滑動操控)
+    window.addEventListener('touchmove', (e) => {
+      if (!state.isPlaying || e.touches.length === 0) return;
+      e.preventDefault();
+      if (state.lastRawGamma === null) {
+        const touch = e.touches[0];
+        const nx = (touch.clientX / window.innerWidth) * 2 - 1;
+        const ny = -(touch.clientY / window.innerHeight) * 2 + 1;
+        const limit = GAME_CONFIG.cellSize * 1.35;
+        state.targetCamX = nx * limit;
+        state.targetCamY = GAME_CONFIG.gridCenterY + ny * limit;
+        clampTargetCamera();
+      }
+    }, { passive: false });
+
+    // 鍵盤 WASD / 方向鍵支援
+    window.addEventListener('keydown', (e) => {
+      if (e.key in state.keys) state.keys[e.key] = true;
+      const lower = e.key.toLowerCase();
+      if (lower in state.keys) state.keys[lower] = true;
+    });
+
+    window.addEventListener('keyup', (e) => {
+      if (e.key in state.keys) state.keys[e.key] = false;
+      const lower = e.key.toLowerCase();
+      if (lower in state.keys) state.keys[lower] = false;
+    });
+
+    /**************************************************************
+     * 9. UI 更新、遊戲流程控制 (開始 / 計時 / 結算)
+     **************************************************************/
+    const hudNameEl = document.getElementById('hud-name');
+    const hudTimeEl = document.getElementById('hud-time');
+    const hudBallsEl = document.getElementById('hud-balls');
+    const hudScoreEl = document.getElementById('hud-score');
+    const startOverlayEl = document.getElementById('start-overlay');
+    const endOverlayEl = document.getElementById('end-overlay');
+    const endResultTextEl = document.getElementById('end-result-text');
+    const playerNameInput = document.getElementById('player-name-input');
+
+    function formatTime(seconds) {
+      const s = Math.max(0, Math.ceil(seconds));
+      const mins = Math.floor(s / 60);
+      const secs = s % 60;
+      return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    }
+
+    function updateHUD() {
+      hudNameEl.textContent = state.playerName;
+      hudTimeEl.textContent = formatTime(state.remainingTime);
+      const remainingBalls = Math.max(0, GAME_CONFIG.totalBalls - state.spawnedBalls);
+      hudBallsEl.textContent = `${remainingBalls} / ${GAME_CONFIG.totalBalls}`;
+      hudScoreEl.textContent = state.score;
+    }
+
+    async function requestGyroPermission() {
+      if (typeof DeviceOrientationEvent !== 'undefined' &&
+          typeof DeviceOrientationEvent.requestPermission === 'function') {
+        try {
+          const permissionState = await DeviceOrientationEvent.requestPermission();
+          if (permissionState === 'granted') {
+            window.addEventListener('deviceorientation', handleOrientation);
+          }
+        } catch (err) {
+          console.warn('DeviceOrientation 授權請求未通過或非 HTTPS 環境：', err);
+        }
+      } else {
+        window.addEventListener('deviceorientation', handleOrientation);
+      }
+    }
+
+    function clearAllBalls() {
+      while (activeBalls.length > 0) {
+        const b = activeBalls.pop();
+        scene.remove(b.mesh);
+      }
+      gridCells.forEach(cell => {
+        cell.mesh.material.opacity = 0.08;
+        cell.edgeLines.material.color.setHex(0x7dd3fc);
+        cell.edgeLines.material.opacity = 0.45;
+      });
+    }
+
+    function startGame() {
+      sound.init();
+      const inputName = playerNameInput.value.trim();
+      state.playerName = inputName || '一甲國小練習生';
+
+      clearAllBalls();
+
+      state.score = 0;
+      state.remainingTime = GAME_CONFIG.totalDuration; // 120 秒 (2分鐘)
+      state.spawnedBalls = 0;
+      state.resolvedBalls = 0;
+      state.elapsedGameTime = 0;
+      state.nextSpawnTime = 0.8; // 開場 0.8 秒後發射第一顆球
+      state.gyroCalibrated = false;
+      state.targetCamX = 0;
+      state.targetCamY = GAME_CONFIG.gridCenterY;
+      state.isPlaying = true;
+
+      updateHUD();
+      startOverlayEl.classList.add('hidden');
+      endOverlayEl.classList.add('hidden');
+    }
+
+    function endGame() {
+      if (!state.isPlaying) return;
+      state.isPlaying = false;
+      clearAllBalls();
+      sound.playGameOver();
+
+      endResultTextEl.innerHTML = `
+        練習結束！<strong>${escapeHTML(state.playerName)}</strong> 的最終成績為：
+        <span class="result-score-highlight">${state.score} 分</span>
+        <div style="font-size: 14px; color: #94a3b8; margin-top: 8px;">
+          共完成 ${state.resolvedBalls} / ${GAME_CONFIG.totalBalls} 顆籃球練習
+        </div>
+      `;
+      endOverlayEl.classList.remove('hidden');
+    }
+
+    function escapeHTML(str) {
+      return str.replace(/[&<>"']/g, (m) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[m]));
+    }
+
+    document.getElementById('start-btn').addEventListener('click', async () => {
+      await requestGyroPermission();
+      startGame();
+    });
+
+    document.getElementById('restart-btn').addEventListener('click', () => {
+      startGame();
+    });
+
+    /**************************************************************
+     * 10. 主動畫迴圈 (Lerp 平滑移動、彈跳物理更新、接球判定)
+     **************************************************************/
+    const clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const dt = Math.min(clock.getDelta(), 0.1);
+
+      // 鍵盤移動增量處理
+      if (state.isPlaying) {
+        const keySpeed = 1.45 * dt;
+        if (state.keys.a || state.keys.ArrowLeft) state.targetCamX -= keySpeed;
+        if (state.keys.d || state.keys.ArrowRight) state.targetCamX += keySpeed;
+        if (state.keys.w || state.keys.ArrowUp) state.targetCamY += keySpeed;
+        if (state.keys.s || state.keys.ArrowDown) state.targetCamY -= keySpeed;
+        clampTargetCamera();
+      }
+
+      // 平滑插值 (Lerp) 移動攝影機 X 與 Y 軸
+      const lerpFactor = 1 - Math.exp(-10 * dt);
+      camera.position.x = THREE.MathUtils.lerp(camera.position.x, state.targetCamX, lerpFactor);
+      camera.position.y = THREE.MathUtils.lerp(camera.position.y, state.targetCamY, lerpFactor);
+      camera.lookAt(camera.position.x * 0.88, camera.position.y * 0.92, -3.0);
+
+      // 更新 3D 半透明雙手掌位置 (始終保持在攝影機正中央前方 0.55m 處)
+      hands3DGroup.position.set(camera.position.x, camera.position.y - 0.02, camera.position.z - 0.55);
+
+      // 更新地面彈跳水波紋特效
+      for (let i = bounceRings.length - 1; i >= 0; i--) {
+        const r = bounceRings[i];
+        r.age += dt;
+        const progress = r.age / 0.45;
+        if (progress >= 1) {
+          scene.remove(r.mesh);
+          bounceRings.splice(i, 1);
+        } else {
+          r.mesh.scale.setScalar(1 + progress * 3.8);
+          r.mesh.material.opacity = 0.75 * (1 - progress);
+        }
+      }
+
+      if (state.isPlaying) {
+        // 1. 倒數計時更新 (2 分鐘 = 120 秒)
+        state.elapsedGameTime += dt;
+        state.remainingTime -= dt;
+
+        if (state.remainingTime <= 0) {
+          state.remainingTime = 0;
+          updateHUD();
+          endGame();
+          return;
+        }
+        updateHUD();
+
+        // 2. 控制 30 顆籃球在 2 分鐘內隨機間隔發射 (平均約 3.2~3.8 秒一顆，確保 120 秒內發完 30 顆)
+        if (state.spawnedBalls < GAME_CONFIG.totalBalls && state.elapsedGameTime >= state.nextSpawnTime) {
+          spawnBasketball();
+          const randomInterval = 2.6 + Math.random() * 1.35; // 2.6s ~ 3.95s 隨機間隔
+          state.nextSpawnTime = state.elapsedGameTime + randomInterval;
+        }
+
+        // 3. 更新場上所有籃球的彈跳軌跡與判定
+        for (let i = activeBalls.length - 1; i >= 0; i--) {
+          const b = activeBalls[i];
+          b.elapsed += dt;
+          const t = b.elapsed / b.flightDuration;
+
+          // 球體自轉
+          b.mesh.rotateOnAxis(b.spinAxis, b.spinSpeed * dt);
+
+          // 計算拋物線彈跳座標
+          if (t <= b.bounceT) {
+            // 第一段：從籃框落向地板彈跳點
+            const u = t / b.bounceT;
+            b.mesh.position.x = THREE.MathUtils.lerp(b.startPos.x, b.bouncePos.x, u);
+            b.mesh.position.z = THREE.MathUtils.lerp(b.startPos.z, b.bouncePos.z, u);
+            // 重力加速落下曲線
+            b.mesh.position.y = b.startPos.y - (b.startPos.y - b.bouncePos.y) * (u * u);
+          } else {
+            // 觸發地板彈跳音效與水波紋
+            if (!b.hasBounced) {
+              b.hasBounced = true;
+              sound.playBounce();
+              createBounceRing(b.bouncePos.x, b.bouncePos.z);
+            }
+            // 第二段：從地板彈跳點彈向九宮格目標格，並繼續延伸飛向玩家雙手與攝影機
+            const u = (t - b.bounceT) / (1 - b.bounceT);
+            b.mesh.position.x = THREE.MathUtils.lerp(b.bouncePos.x, b.gridTargetPos.x, u);
+            b.mesh.position.z = THREE.MathUtils.lerp(b.bouncePos.z, b.gridTargetPos.z, u);
+
+            // 彈起拋物線高度曲線
+            const peakBoost = Math.sin(Math.min(u, 1.35) * Math.PI * 0.65);
+            b.mesh.position.y = b.bouncePos.y + (b.gridTargetPos.y - b.bouncePos.y) * peakBoost;
+          }
+
+          // 檢查是否成功被雙手掌接住
+          if (checkBallCatch(b)) {
+            state.score += 1;
+            state.resolvedBalls += 1;
+            sound.playCatch();
+            triggerGoodEffect();
+
+            scene.remove(b.mesh);
+            const targetCell = b.targetCell;
+            activeBalls.splice(i, 1);
+            resetCellHighlight(targetCell);
+            updateHUD();
+
+            // 若 30 顆球已全部處理完畢，立即結束遊戲
+            if (state.resolvedBalls >= GAME_CONFIG.totalBalls) {
+              setTimeout(() => endGame(), 450);
+              return;
+            }
+            continue;
+          }
+
+          // 若球飛過攝影機未接到，則消失並不加分
+          if (b.mesh.position.z > camera.position.z + 0.15) {
+            state.resolvedBalls += 1;
+            sound.playMiss();
+
+            scene.remove(b.mesh);
+            const targetCell = b.targetCell;
+            activeBalls.splice(i, 1);
+            resetCellHighlight(targetCell);
+            updateHUD();
+
+            // 若 30 顆球已全部處理完畢，立即結束遊戲
+            if (state.resolvedBalls >= GAME_CONFIG.totalBalls) {
+              setTimeout(() => endGame(), 450);
+              return;
+            }
+          }
+        }
+      }
+
+      renderer.render(scene, camera);
+    }
+
+    // RWD 視窗尺寸自適應調整
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // 啟動主迴圈
+    animate();
+  </script>
+</body>
+</html>
